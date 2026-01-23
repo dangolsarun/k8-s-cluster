@@ -1,0 +1,53 @@
+---
+- name: Disable Firewall (UFW/Firewalld)
+  # For RKE2 it's often easier to disable host firewalls and rely on Network Policies
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  ignore_errors: true
+  loop:
+    - ufw
+    - firewalld
+
+- name: Disable Swap
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb > 0
+  changed_when: false
+
+- name: Remove Swap from /etc/fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*swap.*)$'
+    replace: '# \1'
+
+- name: Load Kernel Modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Configure Sysctl for Kubernetes
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+  loop:
+    - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+    - { key: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+    - { key: 'net.ipv4.ip_forward', value: '1' }
+
+- name: Install Dependencies
+  ansible.builtin.package:
+    name:
+      - curl
+      - socat
+      - nfs-common
+      - open-iscsi
+      - container-selinux
+      - selinux-policy-base
+    state: present
+  ignore_errors: true # Some packages might not exist on all distros

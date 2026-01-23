@@ -1,0 +1,58 @@
+---
+- name: Create RKE2 Config Directory
+  ansible.builtin.file:
+    path: /etc/rancher/rke2
+    state: directory
+    mode: '0755'
+
+- name: Deploy RKE2 Config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    mode: '0600'
+  notify: Restart RKE2 Server
+
+- name: Create Manifests Directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/rke2/server/manifests
+    state: directory
+    mode: '0755'
+    recurse: true
+
+# Kube-VIP for HA (Static Pod logic often goes in /var/lib/rancher/rke2/agent/pod-manifests but RKE2 manages its own static pods)
+# For RKE2, standard practice is using the Helm Chart or pure manifest in server/manifests
+# However, for pure HA bootstrap, we often need the VIP up before the API server binds to it?
+# RKE2 binds to 0.0.0.0, so VIP just needs to exist on the interface.
+- name: Deploy Kube-VIP Manifest
+  ansible.builtin.template:
+    src: kube-vip.yaml.j2
+    dest: /var/lib/rancher/rke2/server/manifests/kube-vip.yaml
+    mode: '0600'
+
+- name: Install RKE2
+  ansible.builtin.shell: curl -sfL https://get.rke2.io | sh -
+  args:
+    creates: /usr/local/bin/rke2
+  environment:
+    INSTALL_RKE2_VERSION: "{{ rke2_version }}"
+    INSTALL_RKE2_TYPE: "server"
+
+- name: Enable and Start RKE2 Server
+  ansible.builtin.service:
+    name: rke2-server
+    state: started
+    enabled: true
+
+- name: Wait for Node to be Ready
+  ansible.builtin.wait_for:
+    port: 6443
+    delay: 10
+    timeout: 300
+
+- name: Copy kubeconfig to user home
+  ansible.builtin.copy:
+    src: /etc/rancher/rke2/rke2.yaml
+    dest: /root/.kube/config
+    remote_src: true
+    mode: '0600'
+  ignore_errors: true

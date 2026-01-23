@@ -1,0 +1,20 @@
+---
+# RKE2 Version (Consult https://github.com/rancher/rke2/releases for latest)
+rke2_version: "v1.28.10+rke2r1"
+
+# Cluster VIP for HA
+# REPLACE THIS with the actual Virtual IP you want to use for the cluster endpoint
+cluster_vip: "192.168.1.100"
+cluster_domain: "cluster.local"
+
+# Networking
+rke2_cni: "cilium" # Options: canal (default), cilium, calico
+cilium_version: "1.15.5"
+
+# RKE2 Config
+rke2_config_dir: "/etc/rancher/rke2"
+rke2_token: "my-shared-secret-token" # Change this!
+
+# OS Settings
+disable_firewalld: true
+enable_iscsi: true

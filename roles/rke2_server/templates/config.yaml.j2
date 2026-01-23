@@ -1,0 +1,14 @@
+token: {{ rke2_token }}
+tls-san:
+  - {{ cluster_vip }}
+  - {{ ansible_host }}
+cni: {{ rke2_cni }}
+# CIS Hardening Profile (1.23 is the latest common profile supported by RKE2, check docs for newer)
+profile: "cis-1.23"
+# Etcd Snapshot config
+etcd-snapshot-schedule-cron: "0 */6 * * *"
+etcd-snapshot-retention: 24
+
+{% if groups['rke2_servers'].index(inventory_hostname) != 0 %}
+server: https://{{ cluster_vip }}:9345
+{% endif %}
