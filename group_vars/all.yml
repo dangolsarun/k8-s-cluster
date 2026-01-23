@@ -12,8 +12,10 @@ rke2_cni: "cilium" # Options: canal (default), cilium, calico
 cilium_version: "1.15.5"
 
 # RKE2 Config
+# RKE2 Config
 rke2_config_dir: "/etc/rancher/rke2"
-rke2_token: "my-shared-secret-token" # Change this!
+# Generates a token and saves it to 'credentials/node-token' locally if it doesn't exist
+rke2_token: "{{ lookup('password', 'credentials/node-token length=32 chars=ascii_letters,digits') }}" 
 
 # OS Settings
 disable_firewalld: true
