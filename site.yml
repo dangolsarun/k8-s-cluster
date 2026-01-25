@@ -2,18 +2,22 @@
 - name: Prepare all nodes
   hosts: all
   become: true
+  role_name: common # Can verify this matches role directory
+  tags: common
   roles:
     - common
 
 - name: Deploy RKE2 Servers (Masters)
   hosts: rke2_servers
   become: true
-  serial: 1 # Important: Bootstrap one at a time to ensure Etcd quorum / leader election works smoothly
+  serial: 1
+  tags: server
   roles:
     - rke2_server
 
 - name: Deploy RKE2 Agents (Workers)
   hosts: rke2_agents
   become: true
+  tags: agent
   roles:
     - rke2_agent
