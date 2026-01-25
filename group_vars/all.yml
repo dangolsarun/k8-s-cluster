@@ -4,8 +4,8 @@ rke2_version: "v1.28.10+rke2r1"
 
 # Cluster VIP for HA
 # REPLACE THIS with the actual Virtual IP you want to use for the cluster endpoint
-cluster_vip: "192.168.1.100"
-cluster_domain: "cluster.local"
+cluster_vip: "192.168.28.129"
+cluster_domain: "k8s.dishhome.com.np"
 
 # Networking
 rke2_cni: "cilium" # Options: canal (default), cilium, calico

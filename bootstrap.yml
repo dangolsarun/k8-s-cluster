@@ -1,0 +1,33 @@
+---
+- name: Bootstrap 'dictator' User
+  hosts: all
+  become: true
+  vars:
+    # Set this to the user you want to manage (already created manually or by this playbook)
+    target_user: dictator
+  
+  tasks:
+    - name: Ensure target user exists
+      ansible.builtin.user:
+        name: "{{ target_user }}"
+        shell: /bin/bash
+        groups: sudo,wheel,adm
+        append: true
+        state: present
+      # We assume the user creates 'dictator' manually with password first, or we could set password here.
+      # For now, we just ensure it exists and has groups.
+      ignore_errors: true # In case 'wheel' group doesn't exist on Ubuntu (it uses sudo)
+
+    - name: Configure Passwordless Sudo for {{ target_user }}
+      ansible.builtin.copy:
+        content: "{{ target_user }} ALL=(ALL) NOPASSWD: ALL"
+        dest: "/etc/sudoers.d/{{ target_user }}"
+        mode: '0440'
+        validate: 'visudo -cf %s'
+
+    - name: Set up authorized keys for {{ target_user }} (Optional)
+      ansible.posix.authorized_key:
+        user: "{{ target_user }}"
+        state: present
+        key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+      ignore_errors: true # Fails if you don't have a local key, safe to ignore
