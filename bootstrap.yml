@@ -25,9 +25,9 @@
         mode: '0440'
         validate: 'visudo -cf %s'
 
-    - name: Set up authorized keys for {{ target_user }} (Optional)
+    - name: Set up authorized keys for {{ target_user }}
       ansible.posix.authorized_key:
         user: "{{ target_user }}"
         state: present
-        key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
-      ignore_errors: true # Fails if you don't have a local key, safe to ignore
+        key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+      # Failing here means the controller has no SSH key. Run 'ssh-keygen' on controller first!
