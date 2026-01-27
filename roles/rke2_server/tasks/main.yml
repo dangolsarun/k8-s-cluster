@@ -29,6 +29,20 @@
     dest: /var/lib/rancher/rke2/server/manifests/kube-vip.yaml
     mode: '0600'
 
+- name: Create etcd Group
+  ansible.builtin.group:
+    name: etcd
+    state: present
+
+- name: Create etcd User
+  ansible.builtin.user:
+    name: etcd
+    comment: "Etcd User"
+    group: etcd
+    shell: /sbin/nologin
+    system: true
+    create_home: false
+
 - name: Install RKE2
   ansible.builtin.shell: curl -sfL https://get.rke2.io | sh -
   args:
