@@ -19,6 +19,7 @@
   environment:
     INSTALL_RKE2_VERSION: "{{ rke2_version }}"
     INSTALL_RKE2_TYPE: "agent"
+    INSTALL_RKE2_METHOD: "tar"
 
 - name: Enable and Start RKE2 Agent
   ansible.builtin.service:

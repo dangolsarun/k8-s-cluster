@@ -36,6 +36,7 @@
   environment:
     INSTALL_RKE2_VERSION: "{{ rke2_version }}"
     INSTALL_RKE2_TYPE: "server"
+    INSTALL_RKE2_METHOD: "tar" # Avoids RPM/Yum GPG errors by using the tarball method
 
 - name: Enable and Start RKE2 Server
   ansible.builtin.service:
