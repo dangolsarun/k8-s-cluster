@@ -60,6 +60,13 @@ ansible-playbook bootstrap.yml -u ubuntu -k -K
 
 Now deployment runs fully automated using the `dictator` user.
 
+### 4.1 Granular Deployment (Recommended for Learning)
+You can run steps individually using tags:
+1.  **Common**: `ansible-playbook site.yml -u dictator --tags common`
+2.  **Masters**: `ansible-playbook site.yml -u dictator --tags server`
+3.  **Workers**: `ansible-playbook site.yml -u dictator --tags agent`
+
+### 4.2 Full Deployment (All at once)
 ```bash
 ansible-playbook site.yml -u dictator
 ```

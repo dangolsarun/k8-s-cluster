@@ -2,7 +2,7 @@
 - name: Prepare all nodes
   hosts: all
   become: true
-  role_name: common # Can verify this matches role directory
+  #role_name: common # Can verify this matches role directory
   tags: common
   roles:
     - common
