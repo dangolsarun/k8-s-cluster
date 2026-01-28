@@ -14,6 +14,9 @@ You need 7 Virtual Machines (Ubuntu/Rocky/RHEL):
 - **Cluster VIP**: `192.168.1.100` (Defined in `group_vars/all.yml`). Ideally, this should be a reserved IP in the same subnet as your masters.
 - **Firewall**: The `common` role will disable `ufw`/`firewalld` to let CNI handle traffic.
 
+14.  **Rocky Linux**: `nm-cloud-setup` must be disabled (handled in `common` role).
+5.  **Kube-VIP Bootstrap**: For initial HA bootstrap, the VIP must be available. We move the manifest to `agent/pod-manifests` so Kubelet starts it immediately, even before the API server is fully up.
+
 ### 1.3 Ansible Controller Setup
 On your deployment machine:
 1.  **Install Ansible**: `sudo apt install ansible` (or via pip).

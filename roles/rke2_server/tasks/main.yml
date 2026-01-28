@@ -27,10 +27,17 @@
 # For RKE2, standard practice is using the Helm Chart or pure manifest in server/manifests
 # However, for pure HA bootstrap, we often need the VIP up before the API server binds to it?
 # RKE2 binds to 0.0.0.0, so VIP just needs to exist on the interface.
-- name: Deploy Kube-VIP Manifest
+- name: Create Static Pod Manifests Directory
+  ansible.builtin.file:
+    path: /var/lib/rancher/rke2/agent/pod-manifests
+    state: directory
+    mode: '0755'
+    recurse: true
+
+- name: Deploy Kube-VIP Manifest (Static Pod)
   ansible.builtin.template:
     src: kube-vip.yaml.j2
-    dest: /var/lib/rancher/rke2/server/manifests/kube-vip.yaml
+    dest: /var/lib/rancher/rke2/agent/pod-manifests/kube-vip.yaml
     mode: '0600'
 
 - name: Create etcd Group
