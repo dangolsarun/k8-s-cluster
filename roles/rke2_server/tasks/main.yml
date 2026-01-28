@@ -40,6 +40,10 @@
     dest: /var/lib/rancher/rke2/agent/pod-manifests/kube-vip.yaml
     mode: '0600'
 
+- name: Debug Interface for Kube-VIP
+  ansible.builtin.debug:
+    msg: "Kube-VIP will bind to interface: {{ ansible_default_ipv4.interface }} with VIP: {{ cluster_vip }}"
+
 - name: Create etcd Group
   ansible.builtin.group:
     name: etcd
