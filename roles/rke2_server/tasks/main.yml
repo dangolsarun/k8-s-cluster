@@ -10,7 +10,10 @@
     src: config.yaml.j2
     dest: /etc/rancher/rke2/config.yaml
     mode: '0600'
-  notify: Restart RKE2 Server
+    dest: /etc/rancher/rke2/config.yaml
+    mode: '0600'
+  # notify: Restart RKE2 Server  <-- Disabled to prevent restart loops on initial install. 
+  # If config changes later, you can manually restart or re-enable this.
 
 - name: Create Manifests Directory
   ansible.builtin.file:
