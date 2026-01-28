@@ -62,7 +62,7 @@
   ansible.builtin.wait_for:
     port: 6443
     delay: 10
-    timeout: 300
+    timeout: 600
 
 - name: Copy kubeconfig to user home
   ansible.builtin.copy:

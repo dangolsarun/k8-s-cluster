@@ -51,6 +51,10 @@
     - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
     - { key: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
     - { key: 'net.ipv4.ip_forward', value: '1' }
+    # CIS Hardening Requirements for RKE2
+    - { key: 'vm.overcommit_memory', value: '1' }
+    - { key: 'kernel.panic', value: '10' }
+    - { key: 'kernel.panic_on_oops', value: '1' }
 
 - name: Install Dependencies
   ansible.builtin.package:
