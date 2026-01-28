@@ -10,6 +10,7 @@ spec:
     - --start-as-leader
     - --cp-enable
     - --cp-namespace=kube-system
+    - --interface={{ ansible_default_ipv4.interface }}
     - --vip={{ cluster_vip }}
     - --address={{ cluster_vip }}
     - --arp=true
