@@ -64,6 +64,12 @@
     delay: 10
     timeout: 600
 
+- name: Create .kube Directory
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    mode: '0700'
+
 - name: Copy kubeconfig to user home
   ansible.builtin.copy:
     src: /etc/rancher/rke2/rke2.yaml
