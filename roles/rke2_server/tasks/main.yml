@@ -16,33 +16,42 @@
   # Disabled to prevent restart loops on initial install. 
   # If config changes later, you can manually restart or re-enable this.
 
-- name: Create Manifests Directory
+- name: Ensure /usr/local/bin exists
   ansible.builtin.file:
-    path: /var/lib/rancher/rke2/server/manifests
+    path: /usr/local/bin
     state: directory
     mode: '0755'
-    recurse: true
 
-# Kube-VIP for HA (Static Pod logic often goes in /var/lib/rancher/rke2/agent/pod-manifests but RKE2 manages its own static pods)
-# For RKE2, standard practice is using the Helm Chart or pure manifest in server/manifests
-# However, for pure HA bootstrap, we often need the VIP up before the API server binds to it?
-# RKE2 binds to 0.0.0.0, so VIP just needs to exist on the interface.
-- name: Create Static Pod Manifests Directory
-  ansible.builtin.file:
-    path: /var/lib/rancher/rke2/agent/pod-manifests
-    state: directory
-    mode: '0755'
-    recurse: true
+- name: Download Kube-VIP Binary
+  ansible.builtin.get_url:
+    url: https://github.com/kube-vip/kube-vip/releases/download/v0.6.4/kube-vip_v0.6.4_linux_amd64.tar.gz
+    dest: /tmp/kube-vip.tar.gz
+    mode: '0644'
 
-- name: Deploy Kube-VIP Manifest (Static Pod)
+- name: Extract Kube-VIP Binary
+  ansible.builtin.unarchive:
+    src: /tmp/kube-vip.tar.gz
+    dest: /usr/local/bin/
+    remote_src: true
+    creates: /usr/local/bin/kube-vip
+
+- name: Deploy Kube-VIP Systemd Service
   ansible.builtin.template:
-    src: kube-vip.yaml.j2
-    dest: /var/lib/rancher/rke2/agent/pod-manifests/kube-vip.yaml
-    mode: '0600'
+    src: kube-vip.service.j2
+    dest: /etc/systemd/system/kube-vip.service
+    mode: '0644'
 
-- name: Debug Interface for Kube-VIP
-  ansible.builtin.debug:
-    msg: "Kube-VIP will bind to interface: {{ ansible_default_ipv4.interface }} with VIP: {{ cluster_vip }}"
+- name: Enable and Start Kube-VIP Service
+  ansible.builtin.service:
+    name: kube-vip
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Remove Legacy Kube-VIP Static Pod Manifest
+  ansible.builtin.file:
+    path: /var/lib/rancher/rke2/agent/pod-manifests/kube-vip.yaml
+    state: absent
 
 - name: Create etcd Group
   ansible.builtin.group:
@@ -85,22 +94,15 @@
     INSTALL_RKE2_TYPE: "server"
     INSTALL_RKE2_METHOD: "tar" # Avoids RPM/Yum GPG errors by using the tarball method
 
-- name: Bootstrap Cluster VIP on First Master (Avoid Race Condition)
-  ansible.builtin.command:
-    cmd: "ip addr add {{ cluster_vip }}/32 dev {{ ansible_default_ipv4.interface }}"
-  when: 
-    - inventory_hostname == groups['rke2_servers'][0]
-    - cluster_vip not in ansible_all_ipv4_addresses
-  ignore_errors: true
-  changed_when: false 
-  # We ignore errors in case it exists locally but not in facts, or other 'ip' errors. 
-  # This is a temporary boost to let RKE2 bind. Kube-VIP takes over later.
-
 - name: Enable and Start RKE2 Server
   ansible.builtin.service:
     name: rke2-server
     state: started
     enabled: true
+  register: rke2_start_result
+  until: rke2_start_result is succeeded
+  retries: 5
+  delay: 10
 
 - name: Wait for Node to be Ready
   ansible.builtin.wait_for:
