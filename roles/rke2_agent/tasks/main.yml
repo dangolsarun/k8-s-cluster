@@ -25,7 +25,8 @@
   ansible.builtin.service:
     name: rke2-agent
     state: started
-    ignore_errors: true
+    enabled: true
+  ignore_errors: true
 
 - name: Add RKE2 binaries to GLOBAL PATH
   ansible.builtin.copy:
