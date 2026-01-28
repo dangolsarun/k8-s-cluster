@@ -58,6 +58,18 @@
     system: true
     create_home: false
 
+- name: Check if RKE2 is installed but broken
+  ansible.builtin.stat:
+    path: /usr/local/bin/rke2-killall.sh
+  register: rke2_killall_script
+
+- name: Clean up failed RKE2 state (if service is failed)
+  ansible.builtin.shell: /usr/local/bin/rke2-killall.sh
+  args:
+    removes: /usr/local/bin/rke2-killall.sh
+  when: rke2_killall_script.stat.exists and (ansible_facts.services['rke2-server.service'].state is defined and ansible_facts.services['rke2-server.service'].state == 'stopped')
+  ignore_errors: true
+
 - name: Install RKE2
   ansible.builtin.shell: curl -sfL https://get.rke2.io | sh -
   args:
