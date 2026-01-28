@@ -16,6 +16,7 @@ You need 7 Virtual Machines (Ubuntu/Rocky/RHEL):
 
 14.  **Rocky Linux**: `nm-cloud-setup` must be disabled (handled in `common` role).
 5.  **Kube-VIP Bootstrap**: For initial HA bootstrap, the VIP must be available. We move the manifest to `agent/pod-manifests` so Kubelet starts it immediately, even before the API server is fully up.
+6.  **Kube-VIP Interface**: Explicitly set `--interface` in `kube-vip.yaml` (using `{{ ansible_default_ipv4.interface }}`) to ensure it binds to the correct NIC (e.g., `ens18`) instead of guessing.
 
 ### 1.3 Ansible Controller Setup
 On your deployment machine:
