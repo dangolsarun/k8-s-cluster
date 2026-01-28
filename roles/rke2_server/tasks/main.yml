@@ -64,10 +64,16 @@
   register: rke2_killall_script
 
 - name: Clean up failed RKE2 state (if service is failed)
-  ansible.builtin.shell: /usr/local/bin/rke2-killall.sh
+  ansible.builtin.shell: |
+    /usr/local/bin/rke2-killall.sh
+    rm -rf /var/lib/rancher/rke2/server/db
   args:
     removes: /usr/local/bin/rke2-killall.sh
-  when: rke2_killall_script.stat.exists and (ansible_facts.services['rke2-server.service'].state is defined and ansible_facts.services['rke2-server.service'].state == 'stopped')
+  # Check if service exists and is in a failed/stopped state
+  when: 
+    - rke2_killall_script.stat.exists 
+    - ansible_facts.services['rke2-server.service'] is defined
+    - (ansible_facts.services['rke2-server.service'].state == 'stopped' or ansible_facts.services['rke2-server.service'].state == 'failed')
   ignore_errors: true
 
 - name: Install RKE2
