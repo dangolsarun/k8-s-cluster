@@ -85,6 +85,17 @@
     INSTALL_RKE2_TYPE: "server"
     INSTALL_RKE2_METHOD: "tar" # Avoids RPM/Yum GPG errors by using the tarball method
 
+- name: Bootstrap Cluster VIP on First Master (Avoid Race Condition)
+  ansible.builtin.command:
+    cmd: "ip addr add {{ cluster_vip }}/32 dev {{ ansible_default_ipv4.interface }}"
+  when: 
+    - inventory_hostname == groups['rke2_servers'][0]
+    - cluster_vip not in ansible_all_ipv4_addresses
+  ignore_errors: true
+  changed_when: false 
+  # We ignore errors in case it exists locally but not in facts, or other 'ip' errors. 
+  # This is a temporary boost to let RKE2 bind. Kube-VIP takes over later.
+
 - name: Enable and Start RKE2 Server
   ansible.builtin.service:
     name: rke2-server
