@@ -9,6 +9,18 @@
   loop:
     - ufw
     - firewalld
+    - nm-cloud-setup
+    - nm-cloud-setup.timer
+
+- name: Disable NetworkManager Cloud Setup (Rocky/RHEL)
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  ignore_errors: true
+  loop:
+    - nm-cloud-setup
+    - nm-cloud-setup.timer
 
 - name: Disable Swap
   ansible.builtin.command: swapoff -a
