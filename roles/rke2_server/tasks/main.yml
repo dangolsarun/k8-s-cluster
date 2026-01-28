@@ -121,3 +121,33 @@
     remote_src: true
     mode: '0600'
   ignore_errors: true
+
+- name: Add RKE2 binaries to GLOBAL PATH
+  ansible.builtin.copy:
+    dest: /etc/profile.d/rke2.sh
+    content: 'export PATH=$PATH:/var/lib/rancher/rke2/bin'
+    mode: '0644'
+
+- name: Create .kube directory for user
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.kube"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0700'
+
+- name: Copy kubeconfig to user home
+  ansible.builtin.copy:
+    src: /etc/rancher/rke2/rke2.yaml
+    dest: "/home/{{ ansible_user }}/.kube/config"
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+
+- name: Ensure correct permissions for user kubeconfig
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.kube/config"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'

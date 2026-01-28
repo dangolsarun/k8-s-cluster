@@ -25,4 +25,10 @@
   ansible.builtin.service:
     name: rke2-agent
     state: started
-    enabled: true
+    ignore_errors: true
+
+- name: Add RKE2 binaries to GLOBAL PATH
+  ansible.builtin.copy:
+    dest: /etc/profile.d/rke2.sh
+    content: 'export PATH=$PATH:/var/lib/rancher/rke2/bin'
+    mode: '0644'
