@@ -7,9 +7,13 @@ Wants=network-online.target
 Environment=VIP={{ cluster_vip }}
 Environment=INTERFACE={{ ansible_default_ipv4.interface }}
 Environment=KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+Environment=KUBERNETES_SERVICE_HOST=127.0.0.1
+Environment=KUBERNETES_SERVICE_PORT=6443
 
 ExecStart=/usr/local/bin/kube-vip manager \
+    --kubeconfig=/etc/rancher/rke2/rke2.yaml \
     --controlplane \
+
     --namespace=kube-system \
     --interface=${INTERFACE} \
     --vip=${VIP} \
