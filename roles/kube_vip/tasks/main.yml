@@ -1,77 +1,30 @@
 ---
-- name: Ensure /usr/local/bin exists
-  ansible.builtin.file:
-    path: /usr/local/bin
-    state: directory
-    mode: '0755'
-
-# Step 1: Extract on Master1
-- name: Pull Kube-VIP Image on First Master
-  ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/ctr -address /run/k3s/containerd/containerd.sock -n k8s.io image pull ghcr.io/kube-vip/kube-vip:v0.6.4
-  when: inventory_hostname == groups['rke2_servers'][0]
-  register: pull_result
-  until: pull_result is succeeded
-  retries: 3
-  delay: 10
-  changed_when: "'indexing' in pull_result.stdout or 'done' in pull_result.stdout"
-
-- name: Create Temporary Mount Point
-  ansible.builtin.file:
-    path: /mnt/kube-vip-image
-    state: directory
-    mode: '0755'
-  when: inventory_hostname == groups['rke2_servers'][0]
-
-- name: Mount Kube-VIP Image on First Master
-  ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/ctr -address /run/k3s/containerd/containerd.sock -n k8s.io image mount ghcr.io/kube-vip/kube-vip:v0.6.4 /mnt/kube-vip-image
-  when: inventory_hostname == groups['rke2_servers'][0]
-
-- name: Copy Kube-VIP Binary from Mount
-  ansible.builtin.copy:
-    src: /mnt/kube-vip-image/kube-vip
-    dest: /usr/local/bin/kube-vip-extracted
-    remote_src: true
-    mode: '0755'
-  when: inventory_hostname == groups['rke2_servers'][0]
-
-- name: Unmount Kube-VIP Image
-  ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/ctr -address /run/k3s/containerd/containerd.sock -n k8s.io image unmount /mnt/kube-vip-image
-  when: inventory_hostname == groups['rke2_servers'][0]
+- name: Clean up Legacy Kube-VIP Systemd Service
+  ansible.builtin.systemd:
+    name: kube-vip
+    state: stopped
+    enabled: false
   ignore_errors: true
 
-- name: Fetch Kube-VIP Binary to Controller
-  ansible.builtin.fetch:
-    src: /usr/local/bin/kube-vip-extracted
-    dest: /tmp/kube-vip
-    flat: true
-  when: inventory_hostname == groups['rke2_servers'][0]
+- name: Remove Legacy Kube-VIP Files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/kube-vip.service
+    - /usr/local/bin/kube-vip
+    - /usr/local/bin/kube-vip-extracted
+    - /mnt/kube-vip-image
+  notify: reload-systemd
 
-# Step 2: Distribute to all Masters
-- name: Push Kube-VIP Binary to all Masters
-  ansible.builtin.copy:
-    src: /tmp/kube-vip
-    dest: /usr/local/bin/kube-vip
+- name: Ensure RKE2 Manifests Directory Exists
+  ansible.builtin.file:
+    path: /var/lib/rancher/rke2/server/manifests
+    state: directory
     mode: '0755'
-    owner: root
-    group: root
-  register: push_result
 
-
-# Step 3: Service Setup
-- name: Deploy Kube-VIP Systemd Service
+- name: Deploy Kube-VIP Manifest
   ansible.builtin.template:
-    src: kube-vip.service.j2
-    dest: /etc/systemd/system/kube-vip.service
+    src: kube-vip.yaml.j2
+    dest: /var/lib/rancher/rke2/server/manifests/kube-vip.yaml
     mode: '0644'
-  register: kube_vip_service_config
-
-- name: Enable and Start Kube-VIP Service
-  ansible.builtin.service:
-    name: kube-vip
-    state: "{{ 'restarted' if kube_vip_service_config.changed or push_result.changed else 'started' }}"
-    enabled: true
-    daemon_reload: true
-

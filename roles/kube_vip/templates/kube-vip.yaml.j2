@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-vip
+  namespace: kube-system
+spec:
+  hostNetwork: true
+  containers:
+  - name: kube-vip
+    image: ghcr.io/kube-vip/kube-vip:v0.6.4
+    args:
+      - manager
+    env:
+      - name: vip_arp
+        value: "true"
+      - name: vip_interface
+        value: "{{ ansible_default_ipv4.interface }}"
+      - name: vip_address
+        value: "{{ cluster_vip }}"
+      - name: cp_enable
+        value: "true"
+      - name: svc_enable
+        value: "false"
+      - name: leader_election
+        value: "true"
+      - name: cp_namespace
+        value: "kube-system"
+    securityContext:
+      capabilities:
+        add:
+          - NET_ADMIN
+          - NET_RAW
+    volumeMounts:
+      - name: kubeconfig
+        mountPath: /etc/kubernetes/admin.conf
+        readOnly: true
+  volumes:
+    - name: kubeconfig
+      hostPath:
+        path: /etc/rancher/rke2/rke2.yaml
