@@ -16,14 +16,31 @@
   delay: 10
   changed_when: "'indexing' in pull_result.stdout or 'done' in pull_result.stdout"
 
-- name: Extract Kube-VIP Binary on First Master
-  ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/ctr -address /run/k3s/containerd/containerd.sock -n k8s.io run --rm --mount type=bind,src=/usr/local/bin,dst=/hostbin,options=rw ghcr.io/kube-vip/kube-vip:v0.6.4 temp-extract sh -c "cp /kube-vip /hostbin/kube-vip-extracted"
-  args:
-    creates: /usr/local/bin/kube-vip-extracted
+- name: Create Temporary Mount Point
+  ansible.builtin.file:
+    path: /mnt/kube-vip-image
+    state: directory
+    mode: '0755'
   when: inventory_hostname == groups['rke2_servers'][0]
 
+- name: Mount Kube-VIP Image on First Master
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/ctr -address /run/k3s/containerd/containerd.sock -n k8s.io image mount ghcr.io/kube-vip/kube-vip:v0.6.4 /mnt/kube-vip-image
+  when: inventory_hostname == groups['rke2_servers'][0]
 
+- name: Copy Kube-VIP Binary from Mount
+  ansible.builtin.copy:
+    src: /mnt/kube-vip-image/kube-vip
+    dest: /usr/local/bin/kube-vip-extracted
+    remote_src: true
+    mode: '0755'
+  when: inventory_hostname == groups['rke2_servers'][0]
+
+- name: Unmount Kube-VIP Image
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/ctr -address /run/k3s/containerd/containerd.sock -n k8s.io image unmount /mnt/kube-vip-image
+  when: inventory_hostname == groups['rke2_servers'][0]
+  ignore_errors: true
 
 - name: Fetch Kube-VIP Binary to Controller
   ansible.builtin.fetch:
