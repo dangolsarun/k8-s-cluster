@@ -5,22 +5,41 @@
     state: directory
     mode: '0755'
 
-- name: Pull Kube-VIP Image via Containerd
+# Step 1: Extract on Master1
+- name: Pull Kube-VIP Image on First Master
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/rke2 containerd ctr -n k8s.io image pull ghcr.io/kube-vip/kube-vip:v0.6.4
+    /usr/local/bin/rke2 containerd ctr -n k8s.io image pull ghcr.io/kube-vip/kube-vip:v0.6.4
+  when: inventory_hostname == groups['rke2_servers'][0]
   register: pull_result
   until: pull_result is succeeded
   retries: 3
   delay: 10
   changed_when: "'indexing' in pull_result.stdout or 'done' in pull_result.stdout"
 
-- name: Extract Kube-VIP Binary from Container
+- name: Extract Kube-VIP Binary on First Master
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/rke2 containerd ctr -n k8s.io run --rm --mount type=bind,src=/usr/local/bin,dst=/hostbin,options=rw ghcr.io/kube-vip/kube-vip:v0.6.4 temp-extract sh -c "cp /kube-vip /hostbin/kube-vip"
+    /usr/local/bin/rke2 containerd ctr -n k8s.io run --rm --mount type=bind,src=/usr/local/bin,dst=/hostbin,options=rw ghcr.io/kube-vip/kube-vip:v0.6.4 temp-extract sh -c "cp /kube-vip /hostbin/kube-vip-extracted"
   args:
-    creates: /usr/local/bin/kube-vip
+    creates: /usr/local/bin/kube-vip-extracted
+  when: inventory_hostname == groups['rke2_servers'][0]
 
+- name: Fetch Kube-VIP Binary to Controller
+  ansible.builtin.fetch:
+    src: /usr/local/bin/kube-vip-extracted
+    dest: /tmp/kube-vip
+    flat: true
+  when: inventory_hostname == groups['rke2_servers'][0]
 
+# Step 2: Distribute to all Masters
+- name: Push Kube-VIP Binary to all Masters
+  ansible.builtin.copy:
+    src: /tmp/kube-vip
+    dest: /usr/local/bin/kube-vip
+    mode: '0755'
+    owner: root
+    group: root
+
+# Step 3: Service Setup
 - name: Deploy Kube-VIP Systemd Service
   ansible.builtin.template:
     src: kube-vip.service.j2
