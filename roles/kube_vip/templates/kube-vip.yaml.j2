@@ -10,21 +10,14 @@ spec:
     image: ghcr.io/kube-vip/kube-vip:v0.6.4
     args:
       - manager
-    env:
-      - name: vip_arp
-        value: "true"
-      - name: vip_interface
-        value: "{{ ansible_default_ipv4.interface }}"
-      - name: vip_address
-        value: "{{ cluster_vip }}"
-      - name: cp_enable
-        value: "true"
-      - name: svc_enable
-        value: "false"
-      - name: leader_election
-        value: "true"
-      - name: cp_namespace
-        value: "kube-system"
+      - --controlplane
+      - --interface={{ ansible_default_ipv4.interface }}
+      - --vip={{ cluster_vip }}
+      - --address={{ cluster_vip }}
+      - --arp
+      - --leaderElection
+      - --namespace=kube-system
+      - --enableNodeLabeling
     securityContext:
       capabilities:
         add:
