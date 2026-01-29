@@ -8,7 +8,7 @@
 # Step 1: Extract on Master1
 - name: Pull Kube-VIP Image on First Master
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/ctr -address /run/k8s.io/containerd/containerd.sock -n k8s.io image pull ghcr.io/kube-vip/kube-vip:v0.6.4
+    /var/lib/rancher/rke2/bin/ctr -address /run/k3s/containerd/containerd.sock -n k8s.io image pull ghcr.io/kube-vip/kube-vip:v0.6.4
   when: inventory_hostname == groups['rke2_servers'][0]
   register: pull_result
   until: pull_result is succeeded
@@ -18,10 +18,11 @@
 
 - name: Extract Kube-VIP Binary on First Master
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/ctr -address /run/k8s.io/containerd/containerd.sock -n k8s.io run --rm --mount type=bind,src=/usr/local/bin,dst=/hostbin,options=rw ghcr.io/kube-vip/kube-vip:v0.6.4 temp-extract sh -c "cp /kube-vip /hostbin/kube-vip-extracted"
+    /var/lib/rancher/rke2/bin/ctr -address /run/k3s/containerd/containerd.sock -n k8s.io run --rm --mount type=bind,src=/usr/local/bin,dst=/hostbin,options=rw ghcr.io/kube-vip/kube-vip:v0.6.4 temp-extract sh -c "cp /kube-vip /hostbin/kube-vip-extracted"
   args:
     creates: /usr/local/bin/kube-vip-extracted
   when: inventory_hostname == groups['rke2_servers'][0]
+
 
 
 - name: Fetch Kube-VIP Binary to Controller
