@@ -9,15 +9,15 @@ Environment=INTERFACE={{ ansible_default_ipv4.interface }}
 Environment=KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 
 ExecStart=/usr/local/bin/kube-vip manager \
-    --start-as-leader \
-    --cp-enable \
-    --cp-namespace=kube-system \
+    --controlplane \
+    --namespace=kube-system \
     --interface=${INTERFACE} \
     --vip=${VIP} \
     --address=${VIP} \
-    --arp=true \
-    --leader-election=true \
-    --enable-node-labeling=true
+    --arp \
+    --leaderElection \
+    --enableNodeLabeling
+
 Restart=always
 RestartSec=10
 
