@@ -5,15 +5,21 @@
     state: directory
     mode: '0755'
 
-- name: Download Kube-VIP Binary
-  ansible.builtin.get_url:
-    url: https://github.com/kube-vip/kube-vip/releases/download/v0.6.4/kube-vip
-    dest: /usr/local/bin/kube-vip
-    mode: '0755'
-  register: download_result
-  until: download_result is succeeded
+- name: Pull Kube-VIP Image via Containerd
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/rke2 containerd ctr -n k8s.io image pull ghcr.io/kube-vip/kube-vip:v0.6.4
+  register: pull_result
+  until: pull_result is succeeded
   retries: 3
-  delay: 5
+  delay: 10
+  changed_when: "'indexing' in pull_result.stdout or 'done' in pull_result.stdout"
+
+- name: Extract Kube-VIP Binary from Container
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/rke2 containerd ctr -n k8s.io run --rm --mount type=bind,src=/usr/local/bin,dst=/hostbin,options=rw ghcr.io/kube-vip/kube-vip:v0.6.4 temp-extract sh -c "cp /kube-vip /hostbin/kube-vip"
+  args:
+    creates: /usr/local/bin/kube-vip
+
 
 - name: Deploy Kube-VIP Systemd Service
   ansible.builtin.template:
