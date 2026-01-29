@@ -1,0 +1,9 @@
+server: https://{{ cluster_vip }}:9345
+token: {{ rke2_token }}
+cni: {{ rke2_cni }}
+profile: "cis-1.23"
+tls-san:
+  - {{ cluster_vip }}
+  - {{ ansible_host }}
+node-ip: {{ ansible_host }}
+node-external-ip: {{ ansible_host }}

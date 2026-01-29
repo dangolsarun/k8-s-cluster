@@ -1,0 +1,10 @@
+token: {{ rke2_token }}
+cni: {{ rke2_cni }}
+profile: "cis-1.23"
+tls-san:
+  - {{ cluster_vip }}
+  - {{ ansible_host }}
+etcd-snapshot-schedule-cron: "0 */6 * * *"
+etcd-snapshot-retention: 24
+node-ip: {{ ansible_host }}
+node-external-ip: {{ ansible_host }}

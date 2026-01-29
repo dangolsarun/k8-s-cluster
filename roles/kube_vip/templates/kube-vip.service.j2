@@ -1,0 +1,23 @@
+[Unit]
+Description: Kube-VIP HA Load Balancer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=VIP={{ cluster_vip }}
+Environment=INTERFACE={{ ansible_default_ipv4.interface }}
+ExecStart=/usr/local/bin/kube-vip manager \
+    --start-as-leader \
+    --cp-enable \
+    --cp-namespace=kube-system \
+    --interface=${INTERFACE} \
+    --vip=${VIP} \
+    --address=${VIP} \
+    --arp=true \
+    --leader-election=true \
+    --enable-node-labeling=true
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

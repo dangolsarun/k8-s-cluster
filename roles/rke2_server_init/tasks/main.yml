@@ -1,0 +1,65 @@
+---
+- name: Create RKE2 Config Directory
+  ansible.builtin.file:
+    path: /etc/rancher/rke2
+    state: directory
+    mode: '0755'
+
+- name: Deploy RKE2 Init Config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    mode: '0600'
+
+- name: Create etcd Group
+  ansible.builtin.group:
+    name: etcd
+    state: present
+
+- name: Create etcd User
+  ansible.builtin.user:
+    name: etcd
+    comment: "Etcd User"
+    group: etcd
+    shell: /sbin/nologin
+    system: true
+    create_home: false
+
+- name: Install RKE2
+  ansible.builtin.shell: curl -sfL https://get.rke2.io | sh -
+  args:
+    creates: /usr/local/bin/rke2
+  environment:
+    INSTALL_RKE2_VERSION: "{{ rke2_version }}"
+    INSTALL_RKE2_TYPE: "server"
+    INSTALL_RKE2_METHOD: "tar"
+
+- name: Enable and Start RKE2 Server
+  ansible.builtin.service:
+    name: rke2-server
+    state: started
+    enabled: true
+  register: rke2_start_result
+  until: rke2_start_result is succeeded
+  retries: 5
+  delay: 10
+
+- name: Wait for API Server to be Ready
+  ansible.builtin.wait_for:
+    port: 6443
+    delay: 10
+    timeout: 600
+
+- name: Create .kube Directory
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    mode: '0700'
+
+- name: Copy kubeconfig to root home
+  ansible.builtin.copy:
+    src: /etc/rancher/rke2/rke2.yaml
+    dest: /root/.kube/config
+    remote_src: true
+    mode: '0600'
+  ignore_errors: true

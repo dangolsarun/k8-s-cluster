@@ -1,23 +1,36 @@
 ---
-- name: Prepare all nodes
+- name: Phase 1 - Prepare all nodes
   hosts: all
   become: true
-  #role_name: common # Can verify this matches role directory
   tags: common
   roles:
     - common
 
-- name: Deploy RKE2 Servers (Masters)
+- name: Phase 2 - Initialize first Master
+  hosts: rke2_servers[0]
+  become: true
+  tags: init
+  roles:
+    - rke2_server_init
+
+- name: Phase 3 - Deploy Kube-VIP (Systemd HA)
   hosts: rke2_servers
   become: true
-  serial: 1
-  tags: server
+  tags: vip
   roles:
-    - rke2_server
+    - kube_vip
 
-- name: Deploy RKE2 Agents (Workers)
+- name: Phase 4 - Join Additional Masters
+  hosts: rke2_servers[1:]
+  become: true
+  serial: 1
+  tags: join_server
+  roles:
+    - rke2_server_join
+
+- name: Phase 5 - Join Worker Nodes
   hosts: rke2_agents
   become: true
-  tags: agent
+  tags: join_agent
   roles:
     - rke2_agent
