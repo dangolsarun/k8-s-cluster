@@ -6,6 +6,8 @@ Wants=network-online.target
 [Service]
 Environment=VIP={{ cluster_vip }}
 Environment=INTERFACE={{ ansible_default_ipv4.interface }}
+Environment=KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+
 ExecStart=/usr/local/bin/kube-vip manager \
     --start-as-leader \
     --cp-enable \

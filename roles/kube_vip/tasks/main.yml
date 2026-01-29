@@ -57,6 +57,8 @@
     mode: '0755'
     owner: root
     group: root
+  register: push_result
+
 
 # Step 3: Service Setup
 - name: Deploy Kube-VIP Systemd Service
@@ -64,10 +66,12 @@
     src: kube-vip.service.j2
     dest: /etc/systemd/system/kube-vip.service
     mode: '0644'
+  register: kube_vip_service_config
 
 - name: Enable and Start Kube-VIP Service
   ansible.builtin.service:
     name: kube-vip
-    state: started
+    state: "{{ 'restarted' if kube_vip_service_config.changed or push_result.changed else 'started' }}"
     enabled: true
     daemon_reload: true
+
