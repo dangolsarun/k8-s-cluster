@@ -43,7 +43,8 @@
         - /var/lib/cni
         - /etc/kubernetes
         - /root/.kube
-        - "/home/{{ ansible_user }}/.kube"
+        - "/home/{{ ansible_env.SUDO_USER | default('dictator') }}/.kube"
+
 
     - name: Remove Kube-VIP Artifacts
       ansible.builtin.file:
