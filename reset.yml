@@ -1,0 +1,64 @@
+---
+- name: Reset RKE2 and Kube-VIP (Preserving Common & Bootstrap)
+  hosts: all
+  become: true
+  tasks:
+    - name: Stop RKE2 Services
+      ansible.builtin.service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop:
+        - rke2-server
+        - rke2-agent
+      ignore_errors: true
+
+    - name: Stop Kube-VIP Service (if exists)
+      ansible.builtin.service:
+        name: kube-vip
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Run RKE2 Killall Script
+      ansible.builtin.shell: /usr/local/bin/rke2-killall.sh
+      args:
+        removes: /usr/local/bin/rke2-killall.sh
+      ignore_errors: true
+
+    - name: Run RKE2 Uninstall Script
+      ansible.builtin.shell: /usr/local/bin/rke2-uninstall.sh
+      args:
+        removes: /usr/local/bin/rke2-uninstall.sh
+      ignore_errors: true
+
+    - name: Remove RKE2 Directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/rancher/rke2
+        - /var/lib/rancher/rke2
+        - /var/lib/kubelet
+        - /var/lib/cni
+        - /etc/kubernetes
+        - /root/.kube
+        - "/home/{{ ansible_user }}/.kube"
+
+    - name: Remove Kube-VIP Artifacts
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/kube-vip.service
+        - /usr/local/bin/kube-vip
+        - /usr/local/bin/kube-vip-extracted
+        - /mnt/kube-vip-image
+        - /var/lib/rancher/rke2/server/manifests/kube-vip.yaml
+        - /var/lib/rancher/rke2/agent/pod-manifests/kube-vip.yaml
+      notify: Reload Systemd
+
+  handlers:
+    - name: Reload Systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
