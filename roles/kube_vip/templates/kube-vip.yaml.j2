@@ -12,6 +12,10 @@ spec:
       labels:
         app.kubernetes.io/name: kube-vip
     spec:
+      hostAliases:
+      - ip: "127.0.0.1"
+        hostnames:
+        - "kubernetes"
       tolerations:
       - operator: Exists
       hostNetwork: true
