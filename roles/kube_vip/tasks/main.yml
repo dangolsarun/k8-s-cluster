@@ -25,8 +25,14 @@
     state: directory
     mode: '0755'
 
-- name: Deploy Kube-VIP Manifest
+- name: Deploy Kube-VIP DaemonSet Manifest
   ansible.builtin.template:
     src: kube-vip.yaml.j2
     dest: /var/lib/rancher/rke2/server/manifests/kube-vip.yaml
     mode: '0644'
+
+- name: Delete Old Kube-VIP Singleton Pod
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml delete pod kube-vip -n kube-system --ignore-not-found --wait=false
+  ignore_errors: true
+  when: inventory_hostname == groups['rke2_servers'][0]
