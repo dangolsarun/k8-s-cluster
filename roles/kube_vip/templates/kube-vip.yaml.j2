@@ -28,7 +28,13 @@ spec:
           - --leaderElection
           - --namespace=kube-system
           - --enableNodeLabeling
-          - --kubeconfig=/etc/kubernetes/admin.conf
+        env:
+          - name: KUBECONFIG
+            value: "/etc/kubernetes/admin.conf"
+          - name: KUBERNETES_SERVICE_HOST
+            value: "127.0.0.1"
+          - name: KUBERNETES_SERVICE_PORT
+            value: "6443"
         securityContext:
           capabilities:
             add:
