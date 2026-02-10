@@ -130,6 +130,21 @@
     content: 'export PATH=$PATH:/var/lib/rancher/rke2/bin'
     mode: '0644'
 
+- name: Symlink kubectl to /usr/local/bin
+  ansible.builtin.file:
+    src: /var/lib/rancher/rke2/bin/kubectl
+    dest: /usr/local/bin/kubectl
+    state: link
+    force: true
+
+- name: Symlink crictl to /usr/local/bin
+  ansible.builtin.file:
+    src: /var/lib/rancher/rke2/bin/crictl
+    dest: /usr/local/bin/crictl
+    state: link
+    force: true
+
+
 - name: Create .kube directory for user
   ansible.builtin.file:
     path: "/home/{{ ansible_user }}/.kube"

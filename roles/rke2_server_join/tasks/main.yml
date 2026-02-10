@@ -57,3 +57,18 @@
     remote_src: true
     mode: '0600'
   ignore_errors: true
+
+- name: Symlink kubectl to /usr/local/bin
+  ansible.builtin.file:
+    src: /var/lib/rancher/rke2/bin/kubectl
+    dest: /usr/local/bin/kubectl
+    state: link
+    force: true
+
+- name: Symlink crictl to /usr/local/bin
+  ansible.builtin.file:
+    src: /var/lib/rancher/rke2/bin/crictl
+    dest: /usr/local/bin/crictl
+    state: link
+    force: true
+
