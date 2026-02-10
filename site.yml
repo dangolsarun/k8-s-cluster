@@ -34,3 +34,11 @@
   tags: join_agent
   roles:
     - rke2_agent
+
+- name: Phase 6 - Setup Observability (Monitoring & Logging)
+  hosts: rke2_servers[0]
+  become: true
+  tags: monitoring
+  roles:
+    - monitoring
+

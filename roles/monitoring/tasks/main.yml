@@ -1,0 +1,48 @@
+- name: Install Helm
+  ansible.builtin.shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    creates: /usr/local/bin/helm
+  environment:
+    HELM_INSTALL_DIR: /usr/local/bin
+
+- name: Add Prometheus Community Repo
+  ansible.builtin.shell: |
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    helm repo update
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+- name: Add Grafana Repo
+  ansible.builtin.shell: |
+    helm repo add grafana https://grafana.github.io/helm-charts
+    helm repo update
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+- name: Create Monitoring Namespace
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl create namespace monitoring --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+- name: Deploy Kube-Prometheus-Stack (Metrics)
+  ansible.builtin.shell: |
+    helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+      --namespace monitoring \
+      --set grafana.adminPassword=admin \
+      --set grafana.service.type=NodePort \
+      --set grafana.service.nodePort=30080 \
+      --wait
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+- name: Deploy Loki-Stack (Logging)
+  ansible.builtin.shell: |
+    helm upgrade --install loki grafana/loki-stack \
+      --namespace monitoring \
+      --set promtail.enabled=true \
+      --set loki.persistence.enabled=true \
+      --set loki.persistence.size=10Gi \
+      --wait
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
