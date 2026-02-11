@@ -12,6 +12,8 @@ spec:
       labels:
         app.kubernetes.io/name: kube-vip
     spec:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
       hostAliases:
       - ip: "127.0.0.1"
         hostnames:

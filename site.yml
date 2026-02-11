@@ -36,7 +36,7 @@
     - rke2_agent
 
 - name: Phase 6 - Setup Observability (Monitoring & Logging)
-  hosts: rke2_servers[0]
+  hosts: rke2_servers
   become: true
   tags: monitoring
   roles:
