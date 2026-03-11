@@ -101,5 +101,19 @@ ls -l ~/.kube/config
 
 ## 6. Maintenance
 
-- **Adding Worker 4**: Uncomment it in `inventory.ini` and re-run `site.yml`.
-- **Upgrading**: Change `rke2_version` in `group_vars/all.yml` and re-run `site.yml`.
+### 6.1 Adding a New Worker Node
+To add a new worker (e.g., `worker4`):
+1. **Update Inventory**: Uncomment or add `worker4` in `inventory.ini`.
+2. **Bootstrap**: Run the bootstrap playbook to set up the `dictator` user and SSH key on the new node.
+   ```bash
+   ansible-playbook bootstrap.yml -l worker4 -u ubuntu -k -K
+   ```
+3. **Configure & Join**: Run `site.yml` with the appropriate tags.
+   ```bash
+   ansible-playbook site.yml -l worker4 -u dictator --tags common,join_agent
+   ```
+*(Rook-Ceph and Observability operators will automatically detect the new node and configure storage and monitoring).*
+
+### 6.2 Upgrading
+Change `rke2_version` in `group_vars/all.yml` and re-run `site.yml`.
+
