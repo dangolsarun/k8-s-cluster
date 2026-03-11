@@ -21,11 +21,32 @@
     INSTALL_RKE2_TYPE: "agent"
     INSTALL_RKE2_METHOD: "tar"
 
-- name: Enable and Start RKE2 Agent
-  ansible.builtin.service:
+- name: Enable and restart RKE2 agent service
+  ansible.builtin.systemd:
     name: rke2-agent
-    state: started
+    state: restarted
     enabled: true
+    daemon_reload: true
+
+- name: Wait for agent node to be ready in Kubernetes
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl get nodes {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+  environment:
+    KUBECONFIG: /home/dictator/.kube/config
+  delegate_to: "{{ groups['rke2_servers'][0] }}"
+  register: node_ready
+  until: node_ready.stdout == "True"
+  retries: 30
+  delay: 10
+  ignore_errors: true
+
+- name: Label node as worker explicitly (Workaround for RKE2 label format issue)
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker=true --overwrite
+  environment:
+    KUBECONFIG: /home/dictator/.kube/config
+  delegate_to: "{{ groups['rke2_servers'][0] }}"
+  when: node_ready.stdout == "True"
   ignore_errors: true
 
 - name: Add RKE2 binaries to GLOBAL PATH
