@@ -86,7 +86,14 @@
     dest: "/home/{{ ansible_user }}/.kube/config"
     remote_src: true
     owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
     mode: '0600'
+
+- name: Install Helm
+  ansible.builtin.shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    creates: /usr/local/bin/helm
+  environment:
+    HELM_INSTALL_DIR: /usr/local/bin
+
 
 

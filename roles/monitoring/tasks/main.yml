@@ -1,11 +1,6 @@
-- name: Install Helm
-  ansible.builtin.shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-  args:
-    creates: /usr/local/bin/helm
-  environment:
-    HELM_INSTALL_DIR: /usr/local/bin
-
+---
 - name: Add Prometheus Community Repo
+
   ansible.builtin.shell: |
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     helm repo update
