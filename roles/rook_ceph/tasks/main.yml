@@ -5,6 +5,7 @@
     helm repo update
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
 - name: Create rook-ceph Namespace
@@ -22,6 +23,7 @@
       --wait
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
 - name: Ensure temp directory exists
@@ -45,4 +47,5 @@
       --wait
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true

@@ -1,11 +1,11 @@
 ---
 - name: Add Prometheus Community Repo
-
   ansible.builtin.shell: |
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     helm repo update
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
 - name: Add Grafana Repo
@@ -14,6 +14,7 @@
     helm repo update
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
 - name: Create Monitoring Namespace
@@ -37,6 +38,7 @@
       --wait
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
 - name: Deploy Loki-Stack (Logging)
@@ -50,4 +52,5 @@
       --wait
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
