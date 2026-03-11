@@ -9,6 +9,8 @@ This Ansible project automates the deployment of a highly available, CIS-hardene
 - **VIP**: `kube-vip` provides a floating IP for the HA Control Plane.
 - **Networking**: Cilium CNI (replacing default Canal).
 - **Security**: Hardened to `cis-1.23` profile by default.
+- **Storage**: Rook-Ceph providing HA resilient block/file storage leveraging empty disks across workers.
+
 
 ## Prerequisites
 
