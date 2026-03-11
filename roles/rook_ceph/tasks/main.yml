@@ -8,12 +8,16 @@
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
-- name: Create rook-ceph Namespace
+- name: Create rook-ceph Namespace and apply PodSecurity labels
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl create namespace rook-ceph --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
+    /var/lib/rancher/rke2/bin/kubectl label --overwrite ns rook-ceph pod-security.kubernetes.io/enforce=privileged
+    /var/lib/rancher/rke2/bin/kubectl label --overwrite ns rook-ceph pod-security.kubernetes.io/audit=privileged
+    /var/lib/rancher/rke2/bin/kubectl label --overwrite ns rook-ceph pod-security.kubernetes.io/warn=privileged
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
+
 
 - name: Deploy Rook Ceph Operator
   ansible.builtin.shell: |
