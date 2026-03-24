@@ -64,17 +64,17 @@
     mode: '0600'
   ignore_errors: true
 
-- name: Symlink kubectl to /usr/local/bin
+- name: Symlink kubectl to /usr/bin
   ansible.builtin.file:
     src: /var/lib/rancher/rke2/bin/kubectl
-    dest: /usr/local/bin/kubectl
+    dest: /usr/bin/kubectl
     state: link
     force: true
 
-- name: Symlink crictl to /usr/local/bin
+- name: Symlink crictl to /usr/bin
   ansible.builtin.file:
     src: /var/lib/rancher/rke2/bin/crictl
-    dest: /usr/local/bin/crictl
+    dest: /usr/bin/crictl
     state: link
     force: true
 
@@ -101,6 +101,13 @@
   environment:
     HELM_INSTALL_DIR: /usr/local/bin
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
+
+- name: Symlink helm to /usr/bin
+  ansible.builtin.file:
+    src: /usr/local/bin/helm
+    dest: /usr/bin/helm
+    state: link
+    force: true
 
 
 
