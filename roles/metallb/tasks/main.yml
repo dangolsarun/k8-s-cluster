@@ -1,0 +1,66 @@
+---
+- name: Deploy RKE2 NGINX Ingress Config (Convert to LoadBalancer)
+  ansible.builtin.template:
+    src: rke2-ingress-nginx-config.yaml.j2
+    dest: /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml
+    mode: '0644'
+
+- name: Add MetalLB Helm Repo
+  ansible.builtin.shell: |
+    helm repo add metallb https://metallb.github.io/metallb
+    helm repo update
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
+  run_once: true
+
+- name: Create metallb-system Namespace
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl create namespace metallb-system --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Deploy MetalLB via Helm
+  ansible.builtin.shell: |
+    helm upgrade --install metallb metallb/metallb \
+      --namespace metallb-system \
+      --version 0.14.3 \
+      --wait
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
+  run_once: true
+
+- name: Ensure temp directory exists for MetalLB configs
+  ansible.builtin.file:
+    path: /tmp/metallb-configs
+    state: directory
+
+- name: Create MetalLB IP Pool Config
+  ansible.builtin.template:
+    src: metallb-config.yaml.j2
+    dest: /tmp/metallb-configs/metallb-config.yaml
+    mode: '0644'
+  run_once: true
+
+- name: Apply MetalLB IP Pool Config
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl apply -f /tmp/metallb-configs/metallb-config.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Create Ceph Dashboard Ingress Config
+  ansible.builtin.template:
+    src: ceph-dashboard-ingress.yaml.j2
+    dest: /tmp/metallb-configs/ceph-dashboard-ingress.yaml
+    mode: '0644'
+  run_once: true
+
+- name: Apply Ceph Dashboard Ingress
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl apply -f /tmp/metallb-configs/ceph-dashboard-ingress.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true

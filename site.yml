@@ -42,12 +42,20 @@
   roles:
     - rook_ceph
 
-- name: Phase 7 - Setup Observability (Monitoring & Logging)
+- name: Phase 7 - External Networking (MetalLB & Ingress)
+  hosts: rke2_servers
+  become: true
+  tags: networking
+  roles:
+    - metallb
+
+- name: Phase 8 - Setup Observability (Monitoring & Logging)
   hosts: rke2_servers
   become: true
   tags: monitoring
   roles:
     - monitoring
+
 
 
 
