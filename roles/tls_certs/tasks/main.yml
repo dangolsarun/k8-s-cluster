@@ -24,3 +24,16 @@
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
+
+- name: Create Dashboard TLS Secret in rook-ceph
+  ansible.builtin.shell: |
+    # Ensure namespace exists before creating secret
+    /var/lib/rancher/rke2/bin/kubectl create namespace rook-ceph --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
+    /var/lib/rancher/rke2/bin/kubectl create secret tls rook-ceph-dashboard-tls \
+      --cert=/tmp/tls_certs/tls.crt \
+      --key=/tmp/tls_certs/tls.key \
+      -n rook-ceph \
+      --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true

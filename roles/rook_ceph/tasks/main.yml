@@ -54,7 +54,7 @@
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
-- name: Force restart Ceph Manager Pods to apply HTTP Dashboard toggle
+- name: Force restart Ceph Manager Pods to apply custom Dashboard TLS certificate
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl delete pod -n rook-ceph -l app=rook-ceph-mgr --wait=false || true
   environment:
