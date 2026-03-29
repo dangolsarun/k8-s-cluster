@@ -54,23 +54,41 @@
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
-- name: Force restart Ceph Manager Pods to apply custom Dashboard TLS certificate
-  ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl delete pod -n rook-ceph -l app=rook-ceph-mgr --wait=false || true
-  environment:
-    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
-  run_once: true
-
-- name: Create Ceph Dashboard SSL Ingress Config
+- name: Create Ceph Dashboard SSL Ingress & HTTP Service Config
   ansible.builtin.template:
     src: ceph-dashboard-ingress.yaml.j2
     dest: /tmp/rook-ceph/ceph-dashboard-ingress.yaml
     mode: '0644'
   run_once: true
 
-- name: Delete broken Ceph Dashboard LoadBalancer
+- name: Create dedicated Dashboard HTTP Service
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl delete svc ceph-dashboard-external -n rook-ceph --ignore-not-found
+    /var/lib/rancher/rke2/bin/kubectl apply -f - <<EOF
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: rook-ceph-mgr-dashboard-http
+      namespace: rook-ceph
+    spec:
+      ports:
+      - name: http-dashboard
+        port: 7000
+        protocol: TCP
+        targetPort: 7000
+      selector:
+        app: rook-ceph-mgr
+        rook_cluster: rook-ceph
+    EOF
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Force Disable Ceph Dashboard SSL via Toolbox
+  ansible.builtin.shell: |
+    TOOLS_POD=$(/var/lib/rancher/rke2/bin/kubectl get pod -n rook-ceph -l app=rook-ceph-tools -o jsonpath='{.items[0].metadata.name}')
+    /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph config set mgr mgr/dashboard/ssl false
+    /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph mgr module disable dashboard
+    /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph mgr module enable dashboard
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
