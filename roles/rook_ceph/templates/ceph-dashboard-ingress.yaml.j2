@@ -1,14 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rook-ceph-mgr-dashboard-http
+  namespace: rook-ceph
+spec:
+  ports:
+  - name: http-dashboard
+    port: 7000
+    protocol: TCP
+    targetPort: 7000
+  selector:
+    app: rook-ceph-mgr
+    rook_cluster: rook-ceph
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: ceph-dashboard
   namespace: rook-ceph
   annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
-    nginx.ingress.kubernetes.io/proxy-ssl-protocols: "TLSv1.2 TLSv1.3"
-    nginx.ingress.kubernetes.io/proxy-ssl-server-name: "on"
-    nginx.ingress.kubernetes.io/proxy-ssl-name: "rook-ceph-mgr-dashboard"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
 spec:
   ingressClassName: nginx
   rules:
@@ -19,6 +30,6 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: rook-ceph-mgr-dashboard
+            name: rook-ceph-mgr-dashboard-http
             port:
-              number: 8443
+              number: 7000

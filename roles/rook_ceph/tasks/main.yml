@@ -54,6 +54,13 @@
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
+- name: Force restart Ceph Manager Pods to apply HTTP Dashboard toggle
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl delete pod -n rook-ceph -l app=rook-ceph-mgr --wait=false || true
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
 - name: Create Ceph Dashboard SSL Ingress Config
   ansible.builtin.template:
     src: ceph-dashboard-ingress.yaml.j2
