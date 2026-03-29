@@ -1,0 +1,26 @@
+---
+- name: Ensure certificate staging directory exists
+  ansible.builtin.file:
+    path: /tmp/tls_certs
+    state: directory
+
+- name: Copy TLS Certificate and Key securely to master
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/tmp/tls_certs/{{ item }}"
+    mode: '0600'
+  loop:
+    - tls.crt
+    - tls.key
+  run_once: true
+
+- name: Create Global TLS Secret in kube-system
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl create secret tls dishhome-wildcard-tls \
+      --cert=/tmp/tls_certs/tls.crt \
+      --key=/tmp/tls_certs/tls.key \
+      -n kube-system \
+      --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true

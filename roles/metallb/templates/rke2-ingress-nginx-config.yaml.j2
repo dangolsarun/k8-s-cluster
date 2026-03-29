@@ -6,6 +6,8 @@ metadata:
 spec:
   valuesContent: |-
     controller:
+      extraArgs:
+        default-ssl-certificate: "kube-system/dishhome-wildcard-tls"
       service:
         enabled: true
         type: LoadBalancer
