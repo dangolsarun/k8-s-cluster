@@ -3,7 +3,8 @@ cephClusterSpec:
   dataDirHostPath: /var/lib/rook
   dashboard:
     enabled: true
-    ssl: false
+    ssl: true
+    sslCertificateSecretName: dishhome-wildcard-tls
   mon:
     count: 3
     allowMultiplePerNode: false
