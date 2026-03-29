@@ -5,8 +5,7 @@ metadata:
   namespace: rook-ceph
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/proxy-redirect: "default"
-    nginx.ingress.kubernetes.io/upstream-vhost: "ceph.dishhome.com.np"
+    nginx.ingress.kubernetes.io/proxy-redirect: "~^http://10\..+:7000/(.*) https://ceph.dishhome.com.np/$1"
 spec:
   ingressClassName: nginx
   tls:
