@@ -54,16 +54,23 @@
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
-- name: Create Ceph Dashboard Custom HTTP Service & Ingress Config
+- name: Create Ceph Dashboard Direct LoadBalancer Config
   ansible.builtin.template:
-    src: ceph-dashboard-ingress.yaml.j2
-    dest: /tmp/rook-ceph/ceph-dashboard-ingress.yaml
+    src: ceph-dashboard-loadbalancer.yaml.j2
+    dest: /tmp/rook-ceph/ceph-dashboard-loadbalancer.yaml
     mode: '0644'
   run_once: true
 
-- name: Apply Ceph Dashboard Ingress
+- name: Delete broken Ceph Dashboard Ingress
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl apply -f /tmp/rook-ceph/ceph-dashboard-ingress.yaml
+    /var/lib/rancher/rke2/bin/kubectl delete ingress ceph-dashboard -n rook-ceph --ignore-not-found
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Apply Ceph Dashboard LoadBalancer
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl apply -f /tmp/rook-ceph/ceph-dashboard-loadbalancer.yaml
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
