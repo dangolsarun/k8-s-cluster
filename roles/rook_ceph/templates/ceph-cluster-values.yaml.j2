@@ -1,6 +1,9 @@
 operatorNamespace: rook-ceph
 cephClusterSpec:
   dataDirHostPath: /var/lib/rook
+  dashboard:
+    enabled: true
+    ssl: false
   mon:
     count: 3
     allowMultiplePerNode: false
@@ -52,10 +55,6 @@ cephBlockPools:
         csi.storage.k8s.io/fstype: ext4
 cephFileSystems: []
 cephObjectStores: []
-
-dashboard:
-  enabled: true
-  ssl: false
 
 toolbox:
   enabled: true
