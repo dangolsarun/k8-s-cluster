@@ -5,8 +5,7 @@ metadata:
   namespace: rook-ceph
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/proxy-redirect-from: "http://"
-    nginx.ingress.kubernetes.io/proxy-redirect-to: "https://"
+    nginx.ingress.kubernetes.io/proxy-redirect: "default"
 spec:
   ingressClassName: nginx
   tls:
