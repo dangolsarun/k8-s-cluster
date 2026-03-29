@@ -83,11 +83,11 @@
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
 
-- name: Force Disable Ceph Dashboard SSL and Clear Broken External URL via Toolbox
+- name: Force Disable Ceph Dashboard SSL and Enforce External Identity via Toolbox
   ansible.builtin.shell: |
     TOOLS_POD=$(/var/lib/rancher/rke2/bin/kubectl get pod -n rook-ceph -l app=rook-ceph-tools -o jsonpath='{.items[0].metadata.name}')
     /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph config set mgr mgr/dashboard/ssl false
-    /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph config rm mgr mgr/dashboard/external_url || true
+    /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph config set mgr mgr/dashboard/external_url https://ceph.dishhome.com.np
     /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph mgr module disable dashboard
     /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph mgr module enable dashboard
   environment:

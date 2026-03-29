@@ -6,6 +6,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     nginx.ingress.kubernetes.io/proxy-redirect: "default"
+    nginx.ingress.kubernetes.io/upstream-vhost: "ceph.dishhome.com.np"
 spec:
   ingressClassName: nginx
   tls:
