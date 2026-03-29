@@ -29,7 +29,7 @@
   ansible.builtin.shell: |
     # Ensure namespace exists before creating secret
     /var/lib/rancher/rke2/bin/kubectl create namespace rook-ceph --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
-    /var/lib/rancher/rke2/bin/kubectl create secret tls rook-ceph-dashboard-tls \
+    /var/lib/rancher/rke2/bin/kubectl create secret tls dishhome-wildcard-tls \
       --cert=/tmp/tls_certs/tls.crt \
       --key=/tmp/tls_certs/tls.key \
       -n rook-ceph \
