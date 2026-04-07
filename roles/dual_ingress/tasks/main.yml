@@ -1,0 +1,23 @@
+---
+- name: Deploy Internal Ingress Config Override
+  ansible.builtin.template:
+    src: internal-config.yaml.j2
+    dest: /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml
+    mode: '0644'
+
+- name: Deploy External Ingress HelmChart Manifest
+  ansible.builtin.template:
+    src: external-chart.yaml.j2
+    dest: /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-external.yaml
+    mode: '0644'
+
+- name: Wait for Ingress Controllers to stabilize
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl wait --namespace kube-system \
+      --for=condition=ready pod \
+      --selector=app.kubernetes.io/component=controller \
+      --timeout=120s
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+  ignore_errors: true

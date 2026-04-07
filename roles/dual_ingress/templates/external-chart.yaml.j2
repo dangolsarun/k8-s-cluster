@@ -1,0 +1,24 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: rke2-ingress-nginx-external
+  namespace: kube-system
+spec:
+  chart: rke2-ingress-nginx
+  repo: https://rke2-charts.rancher.io
+  targetNamespace: kube-system
+  valuesContent: |-
+    controller:
+      ingressClassResource:
+        name: nginx-external
+        enabled: true
+        default: false
+        controllerValue: k8s.io/ingress-nginx-external
+      scope:
+        enabled: false
+      extraArgs:
+        ingress-class: nginx-external
+      service:
+        loadBalancerIP: 192.168.28.27
+        annotations:
+          metallb.universe.tf/address-pool: first-pool

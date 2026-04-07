@@ -1,10 +1,4 @@
 ---
-- name: Deploy RKE2 NGINX Ingress Config (Convert to LoadBalancer)
-  ansible.builtin.template:
-    src: rke2-ingress-nginx-config.yaml.j2
-    dest: /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml
-    mode: '0644'
-
 - name: Add MetalLB Helm Repo
   ansible.builtin.shell: |
     helm repo add metallb https://metallb.github.io/metallb
