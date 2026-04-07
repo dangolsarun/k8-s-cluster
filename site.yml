@@ -35,12 +35,13 @@
   roles:
     - rke2_agent
 
-- name: Phase 6 - External Networking (MetalLB & Ingress)
+- name: Phase 6 - External Networking (MetalLB & Dual Ingress)
   hosts: rke2_servers
   become: true
   tags: networking
   roles:
     - metallb
+    - dual_ingress
 
 - name: Phase 7 - Centralized TLS Certificates
   hosts: rke2_servers
