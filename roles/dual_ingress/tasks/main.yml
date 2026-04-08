@@ -65,7 +65,7 @@
     release_namespace: "{{ item.namespace }}"
     values: "{{ item.chart_values }}"
     kubeconfig: /etc/rancher/rke2/rke2.yaml
-    executable: /usr/local/bin/helm
+    binary_path: /usr/local/bin/helm
   loop:
     - name: "{{ ingress_external_class }}"
       namespace: "{{ ingress_external_namespace }}"
