@@ -38,7 +38,7 @@
 - name: Phase 6 - External Networking (MetalLB & Dual Ingress)
   hosts: rke2_servers
   become: true
-  tags: networking
+  tags: [networking, dual_ingress]
   roles:
     - metallb
     - dual_ingress
