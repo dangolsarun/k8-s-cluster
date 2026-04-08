@@ -12,13 +12,25 @@
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
 
-- name: Deploy External Ingress HelmChart Manifest
-  ansible.builtin.template:
-    src: external-chart.yaml.j2
-    dest: /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-external.yaml
-    mode: '0644'
+- name: Cleanup accidental External Ingress from kube-system
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl delete helmchart -n kube-system rke2-ingress-nginx-external --ignore-not-found
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
 
-- name: Wait for Ingress Controllers to stabilize
+- name: Wait for Internal Ingress to stabilize
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl wait --namespace kube-system \
+      --for=condition=ready pod \
+      --selector=app.kubernetes.io/instance=rke2-ingress-nginx \
+      --timeout=120s
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+  ignore_errors: true
+
+- name: Wait for External Ingress to stabilize
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl wait --namespace ingress-external \
       --for=condition=ready pod \
