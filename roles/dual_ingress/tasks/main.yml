@@ -18,16 +18,24 @@
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
 
-- name: Force Purge Conflict Resources (Cleanup)
+- name: Surgical Cleanup of Conflicting External Ingress in kube-system
   ansible.builtin.shell: |
-    # Delete the failed HelmChart and its associated resources in kube-system
+    # Explicitly remove resources that are blocking the LoadBalancer tiering
+    /var/lib/rancher/rke2/bin/kubectl delete ingressclass nginx-external --ignore-not-found
+    /var/lib/rancher/rke2/bin/kubectl delete daemonset -n kube-system rke2-ingress-nginx-external-controller --ignore-not-found
+    /var/lib/rancher/rke2/bin/kubectl delete service -n kube-system rke2-ingress-nginx-external-controller-admission --ignore-not-found
+    /var/lib/rancher/rke2/bin/kubectl delete serviceaccount -n kube-system rke2-ingress-nginx-external --ignore-not-found
+    /var/lib/rancher/rke2/bin/kubectl delete clusterrolebinding helm-kube-system-rke2-ingress-nginx-external --ignore-not-found
+    
+    # Only delete the HelmChart if it's currently failing/broken to allow fresh install
     /var/lib/rancher/rke2/bin/kubectl delete helmchart -n kube-system rke2-ingress-nginx-external --ignore-not-found
-    
-    # Delete conflicting ClusterRoles/Bindings that block official ingress-nginx install
-    /var/lib/rancher/rke2/bin/kubectl delete clusterrole rke2-ingress-nginx-external --ignore-not-found
-    /var/lib/rancher/rke2/bin/kubectl delete clusterrolebinding rke2-ingress-nginx-external --ignore-not-found
-    
-    # Force re-apply the correct manifests immediately
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Enforce Tiered Manifests (kubectl apply)
+  ansible.builtin.shell: |
+    # Touch the base ingress to ensure it exists
     /var/lib/rancher/rke2/bin/kubectl apply -f /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml
     /var/lib/rancher/rke2/bin/kubectl apply -f /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-external.yaml
   environment:
@@ -36,7 +44,7 @@
 
 - name: Brief pause for RKE2 HelmController to notice changes
   ansible.builtin.pause:
-    seconds: 20
+    seconds: 30
 
 - name: Wait for Internal Ingress to stabilize
   ansible.builtin.shell: |
@@ -53,7 +61,7 @@
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl wait --namespace ingress-external \
       --for=condition=ready pod \
-      --selector=app.kubernetes.io/name=ingress-nginx \
+      --selector=app.kubernetes.io/instance=rke2-ingress-nginx-external \
       --timeout=180s
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml

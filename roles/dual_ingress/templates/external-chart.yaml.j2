@@ -4,8 +4,8 @@ metadata:
   name: rke2-ingress-nginx-external
   namespace: kube-system
 spec:
-  chart: ingress-nginx
-  repo: https://kubernetes.github.io/ingress-nginx
+  chart: rke2-ingress-nginx
+  repo: https://rke2-charts.rancher.io
   targetNamespace: ingress-external
   valuesContent: |-
     controller:
@@ -22,4 +22,3 @@ spec:
         loadBalancerIP: 192.168.28.27
         annotations:
           metallb.universe.tf/address-pool: first-pool
-
