@@ -6,6 +6,11 @@ metadata:
 spec:
   valuesContent: |-
     controller:
+      ingressClassResource:
+        name: nginx
+        enabled: true
+        default: true
+        controllerValue: k8s.io/ingress-nginx
       hostPort:
         enabled: false
       service:
@@ -14,6 +19,5 @@ spec:
         loadBalancerIP: 192.168.28.25
         annotations:
           metallb.universe.tf/address-pool: first-pool
-
-
-
+      admissionWebhooks:
+        enabled: true
