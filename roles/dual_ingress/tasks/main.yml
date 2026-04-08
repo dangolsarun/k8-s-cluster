@@ -20,22 +20,19 @@
 
 - name: Surgical Cleanup of Conflicting External Ingress in kube-system
   ansible.builtin.shell: |
-    # Explicitly remove resources that are blocking the LoadBalancer tiering
     /var/lib/rancher/rke2/bin/kubectl delete ingressclass nginx-external --ignore-not-found
     /var/lib/rancher/rke2/bin/kubectl delete daemonset -n kube-system rke2-ingress-nginx-external-controller --ignore-not-found
     /var/lib/rancher/rke2/bin/kubectl delete service -n kube-system rke2-ingress-nginx-external-controller-admission --ignore-not-found
     /var/lib/rancher/rke2/bin/kubectl delete serviceaccount -n kube-system rke2-ingress-nginx-external --ignore-not-found
     /var/lib/rancher/rke2/bin/kubectl delete clusterrolebinding helm-kube-system-rke2-ingress-nginx-external --ignore-not-found
-    
-    # Only delete the HelmChart if it's currently failing/broken to allow fresh install
     /var/lib/rancher/rke2/bin/kubectl delete helmchart -n kube-system rke2-ingress-nginx-external --ignore-not-found
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
+  ignore_errors: true
 
 - name: Enforce Tiered Manifests (kubectl apply)
   ansible.builtin.shell: |
-    # Touch the base ingress to ensure it exists
     /var/lib/rancher/rke2/bin/kubectl apply -f /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml
     /var/lib/rancher/rke2/bin/kubectl apply -f /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-external.yaml
   environment:
