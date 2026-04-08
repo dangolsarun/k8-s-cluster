@@ -12,12 +12,13 @@
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
 
-- name: Cleanup accidental External Ingress from kube-system
+- name: Force-purge all Pending Ingress pods to clear HostPort deadlock
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl delete helmchart -n kube-system rke2-ingress-nginx-external --ignore-not-found
+    /var/lib/rancher/rke2/bin/kubectl get pods -A -l 'app.kubernetes.io/name=rke2-ingress-nginx' --field-selector=status.phase=Pending -o name | xargs -r /var/lib/rancher/rke2/bin/kubectl delete -A --force --grace-period=0
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
+  ignore_errors: true
 
 - name: Wait for Internal Ingress to stabilize
   ansible.builtin.shell: |
