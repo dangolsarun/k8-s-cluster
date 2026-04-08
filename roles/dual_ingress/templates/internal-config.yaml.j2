@@ -9,7 +9,9 @@ spec:
       hostPort:
         enabled: false
       service:
+        type: LoadBalancer
         loadBalancerIP: 192.168.28.25
         annotations:
           metallb.universe.tf/address-pool: first-pool
+
 
