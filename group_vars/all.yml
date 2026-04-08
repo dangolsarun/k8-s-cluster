@@ -20,3 +20,11 @@ rke2_token: "{{ lookup('password', 'credentials/node-token length=32 chars=ascii
 # OS Settings
 disable_firewalld: true
 enable_iscsi: true
+
+# TLS & Certificate Management
+tls_secret_name: "dishhome-wildcard-tls"
+tls_namespaces:
+  - "kube-system"
+  - "ingress-internal"
+  - "ingress-external"
+  - "monitoring"
