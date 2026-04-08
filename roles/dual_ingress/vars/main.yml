@@ -1,0 +1,24 @@
+---
+ingress_app_url: "https://kubernetes.github.io/ingress-nginx"
+ingress_chart_ref: "ingress-nginx/ingress-nginx"
+ingress_version: "4.11.2"
+
+# Tier Classes and Namespaces
+ingress_external_class: "nginx-external"
+ingress_external_namespace: "ingress-external"
+
+ingress_internal_class: "nginx-internal"
+ingress_internal_namespace: "ingress-internal"
+
+# IP Assignments
+ingress_internal_ip: "192.168.28.25"
+ingress_external_ip: "192.168.28.27"
+
+# MetalLB Config
+metallb_pool_name: "first-pool"
+
+# Optional features (disabled by default)
+traces_enabled: false
+prometheus_enabled: false
+custom_replica_count: 2
+admission_webhook_cert_issuer: "selfsigned-issuer"

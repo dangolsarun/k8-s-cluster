@@ -1,25 +1,29 @@
 ---
-- name: Deploy Internal Ingress Config Override
-  ansible.builtin.template:
-    src: internal-config.yaml.j2
-    dest: /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml
-    mode: '0644'
-
-- name: Deploy External Ingress Manifest
-  ansible.builtin.template:
-    src: external-chart.yaml.j2
-    dest: /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-external.yaml
-    mode: '0644'
-
-- name: Ensure External Ingress Namespace exists
-  ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl create namespace ingress-external \
-      --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
-  environment:
-    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+- name: Ensure Python dependencies for Kubernetes modules are present
+  ansible.builtin.package:
+    name:
+      - python3-pip
+    state: present
   run_once: true
 
-- name: Purge stale external ingress resources from kube-system
+- name: Install kubernetes Python library via pip
+  ansible.builtin.pip:
+    name:
+      - kubernetes
+      - pyyaml
+    extra_args: --user
+  run_once: true
+
+- name: Cleanup legacy RKE2 ingress manifests
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml
+    - /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-external.yaml
+  run_once: true
+
+- name: Purge stale ingress resources from kube-system
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl delete ingressclass nginx-external --ignore-not-found
     /var/lib/rancher/rke2/bin/kubectl delete daemonset -n kube-system rke2-ingress-nginx-external-controller --ignore-not-found
@@ -32,26 +36,76 @@
   run_once: true
   ignore_errors: true
 
-- name: Brief pause for RKE2 reconciliation
-  ansible.builtin.pause:
-    seconds: 60
-
-- name: Wait for Internal Ingress to stabilize
-  ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl wait --namespace kube-system \
-      --for=condition=ready pod \
-      --selector=app.kubernetes.io/instance=rke2-ingress-nginx \
-      --timeout=240s
-  environment:
-    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+- name: Add Helm repository for NGINX Ingress Controller
+  kubernetes.core.helm_repository:
+    name: ingress-nginx
+    repo_url: "{{ ingress_app_url }}"
   run_once: true
 
-- name: Wait for External Ingress to stabilize
-  ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl wait --namespace ingress-external \
-      --for=condition=ready pod \
-      --selector=app.kubernetes.io/instance=rke2-ingress-nginx-external \
-      --timeout=240s
-  environment:
-    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+- name: Create Namespaces for Ingress Controllers
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ item }}"
+  loop:
+    - "{{ ingress_external_namespace }}"
+    - "{{ ingress_internal_namespace }}"
+  run_once: true
+
+- name: Install NGINX Ingress Controllers (Dual Tier)
+  kubernetes.core.helm:
+    state: present
+    update_repo_cache: true
+    name: "{{ item.name }}"
+    chart_ref: "{{ ingress_chart_ref }}"
+    chart_version: "{{ ingress_version }}"
+    release_namespace: "{{ item.namespace }}"
+    values: "{{ item.chart_values }}"
+    kubeconfig: /etc/rancher/rke2/rke2.yaml
+    executable: /usr/local/bin/helm
+  loop:
+    - name: "{{ ingress_external_class }}"
+      namespace: "{{ ingress_external_namespace }}"
+      chart_values:
+        controller:
+          ingressClassResource:
+            name: "{{ ingress_external_class }}"
+            enabled: true
+            default: false
+            controllerValue: "k8s.io/{{ ingress_external_class }}"
+          ingressClass: "{{ ingress_external_class }}"
+          service:
+            type: "LoadBalancer"
+            loadBalancerIP: "{{ ingress_external_ip }}"
+            annotations:
+              metallb.universe.tf/address-pool: "{{ metallb_pool_name }}"
+          replicaCount: "{{ custom_replica_count }}"
+          admissionWebhooks:
+            enabled: true
+            port: 8444
+          electionID: "{{ ingress_external_class }}-leader"
+
+    - name: "{{ ingress_internal_class }}"
+      namespace: "{{ ingress_internal_namespace }}"
+      chart_values:
+        controller:
+          ingressClassResource:
+            name: "{{ ingress_internal_class }}"
+            enabled: true
+            default: true
+            controllerValue: "k8s.io/{{ ingress_internal_class }}"
+          ingressClass: "{{ ingress_internal_class }}"
+          service:
+            type: "LoadBalancer"
+            loadBalancerIP: "{{ ingress_internal_ip }}"
+            annotations:
+              metallb.universe.tf/address-pool: "{{ metallb_pool_name }}"
+          replicaCount: "{{ custom_replica_count }}"
+          admissionWebhooks:
+            enabled: true
+            port: 8443
+          electionID: "{{ ingress_internal_class }}-leader"
   run_once: true
