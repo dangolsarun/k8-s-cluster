@@ -18,22 +18,27 @@
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
 
-- name: Surgical Cleanup of Conflicting External Ingress in kube-system
+- name: ULTIMATE CLEANUP of Conflicting Ingress Resources
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl delete ingressclass nginx-external --ignore-not-found
+    # 1. Purge the accidental external ingress from kube-system namespace
+    /var/lib/rancher/rke2/bin/kubectl delete helmchart -n kube-system rke2-ingress-nginx-external --ignore-not-found
     /var/lib/rancher/rke2/bin/kubectl delete daemonset -n kube-system rke2-ingress-nginx-external-controller --ignore-not-found
     /var/lib/rancher/rke2/bin/kubectl delete service -n kube-system rke2-ingress-nginx-external-controller-admission --ignore-not-found
+    /var/lib/rancher/rke2/bin/kubectl delete ingressclass nginx-external --ignore-not-found
     /var/lib/rancher/rke2/bin/kubectl delete serviceaccount -n kube-system rke2-ingress-nginx-external --ignore-not-found
     /var/lib/rancher/rke2/bin/kubectl delete clusterrolebinding helm-kube-system-rke2-ingress-nginx-external --ignore-not-found
-    /var/lib/rancher/rke2/bin/kubectl delete helmchart -n kube-system rke2-ingress-nginx-external --ignore-not-found
+    
+    # 2. Force RKE2 to restore the default internal gateway
+    # If the HelmChart was deleted, we force-apply the base manifest to bring it back
+    /var/lib/rancher/rke2/bin/kubectl apply -f /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx.yaml --ignore-not-found
+    /var/lib/rancher/rke2/bin/kubectl apply -f /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
   ignore_errors: true
 
-- name: Enforce Tiered Manifests (kubectl apply)
+- name: Force Apply External Gateway Manifest
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl apply -f /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml
     /var/lib/rancher/rke2/bin/kubectl apply -f /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-external.yaml
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
