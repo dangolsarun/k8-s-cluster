@@ -12,13 +12,18 @@
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
 
-- name: Cleanup existing HelmCharts to force reconciliation
-  ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl delete helmchart -n kube-system rke2-ingress-nginx-external --ignore-not-found
-    /var/lib/rancher/rke2/bin/kubectl delete helmchart -n kube-system rke2-ingress-nginx --ignore-not-found
-  environment:
-    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
-  run_once: true
+- name: Trigger RKE2 manifest reconciliation (Touch files)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: touch
+    mode: '0644'
+  loop:
+    - /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml
+    - /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-external.yaml
+
+- name: Brief pause for RKE2 HelmController to notice changes
+  ansible.builtin.pause:
+    seconds: 15
 
 - name: Wait for Internal Ingress to stabilize
   ansible.builtin.shell: |
@@ -35,9 +40,10 @@
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl wait --namespace ingress-external \
       --for=condition=ready pod \
-      --selector=app.kubernetes.io/instance=ingress-nginx \
+      --selector=app.kubernetes.io/name=ingress-nginx \
       --timeout=120s
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
   ignore_errors: true
+
