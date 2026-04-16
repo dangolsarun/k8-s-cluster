@@ -90,6 +90,16 @@
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
 
+- name: Wait for Ceph Toolbox Pod to be ready
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl wait --namespace rook-ceph \
+      --for=condition=ready pod \
+      --selector=app=rook-ceph-tools \
+      --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
 - name: Finalize Ceph Dashboard Identity via Toolbox
   ansible.builtin.shell: |
     TOOLS_POD=$(/var/lib/rancher/rke2/bin/kubectl get pod -n rook-ceph -l app=rook-ceph-tools -o jsonpath='{.items[0].metadata.name}')
@@ -98,6 +108,10 @@
     /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph mgr module enable dashboard
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  register: ceph_dashboard_config
+  until: ceph_dashboard_config.rc == 0
+  retries: 15
+  delay: 20
   run_once: true
 
 - name: Apply Ceph Dashboard Ingress
