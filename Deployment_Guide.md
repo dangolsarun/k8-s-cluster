@@ -83,6 +83,21 @@ ansible-playbook site.yml -u dictator
     -   Installs RKE2 on Master 2 & 3 and joins them.
     -   Configures `cis-1.23` profile.
 3.  **Agent**: Installs RKE2 on Workers and joins them to the cluster.
+4.  **Networking**: 
+    -   Deploys `metallb` referencing the address pool configured in `group_vars/all.yml` (e.g., `192.168.28.125-192.168.28.128`).
+    -   Deploys **Dual Ingress Controllers**:
+        -   **Internal Ingress** (`nginx-internal`): Binds to `192.168.28.125` inside `ingress-internal` namespace.
+        -   **External Ingress** (`nginx-external`): Binds to `192.168.28.127` inside `ingress-external` namespace.
+5.  **TLS Certificates**:
+    -   Checks your Ansible controller for `~/certificates/tls.crt` and `~/certificates/tls.key`.
+    -   If these files **exist locally**, it copies them securely to the cluster.
+    -   If these files **do not exist**, it automatically generates a valid Self-Signed Wildcard Certificate for `*.dishhome.com.np` directly on the server to prevent deployment failures.
+    -   Deploys the `dishhome-wildcard-tls` Secret into multiple predefined namespaces (e.g., `kube-system`, `ingress-internal`, `ingress-external`, `monitoring`).
+6.  **Storage**:
+    -   Installs the **Rook-Ceph** Operator.
+    -   Provisions storage using all available raw devices on worker nodes.
+    -   Automatically clones the wildcard certificate into the `rook-ceph` namespace.
+    -   Exposes the Ceph Dashboard at `ceph.dishhome.com.np` utilizing the Internal Ingress controller via HTTPS.
 
 ## 5. Verification
 
@@ -97,11 +112,26 @@ sudo /var/lib/rancher/rke2/bin/kubectl get pods -A
 
 # Check Local Kubeconfig
 ls -l ~/.kube/config
+
+# Verify Ingress IPs allocated via MetalLB
+sudo /var/lib/rancher/rke2/bin/kubectl get svc -A | grep LoadBalancer
+
+# Verify TLS Secrets
+sudo /var/lib/rancher/rke2/bin/kubectl get secrets -A | grep tls
 ```
 
 ## 6. Maintenance
 
-### 6.1 Adding a New Worker Node
+### 6.1 Certificate Management
+If you need to update your Wildcard Certificate:
+1. Place the new `tls.crt` and `tls.key` in your Ansible host user's `~/certificates/` directory.
+2. Run the TLS certs tag again:
+   ```bash
+   ansible-playbook site.yml -u dictator --tags tls_certs
+   ```
+This will forcefully recreate the secrets in all necessary namespaces across the cluster.
+
+### 6.2 Adding a New Worker Node
 To add a new worker (e.g., `worker4`):
 1. **Update Inventory**: Uncomment or add `worker4` in `inventory.ini`.
 2. **Bootstrap**: Run the bootstrap playbook to set up the `dictator` user and SSH key on the new node.
