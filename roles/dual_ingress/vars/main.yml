@@ -11,8 +11,8 @@ ingress_internal_class: "nginx-internal"
 ingress_internal_namespace: "ingress-internal"
 
 # IP Assignments
-ingress_internal_ip: "192.168.28.25"
-ingress_external_ip: "192.168.28.27"
+ingress_internal_ip: "192.168.28.125"
+ingress_external_ip: "192.168.28.127"
 
 # MetalLB Config
 metallb_pool_name: "first-pool"

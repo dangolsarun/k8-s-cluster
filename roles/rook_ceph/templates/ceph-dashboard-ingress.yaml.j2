@@ -4,22 +4,27 @@ metadata:
   name: ceph-dashboard
   namespace: rook-ceph
   annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/proxy-redirect-from: "~^http://10\\.42\\..+/(.*)"
+    nginx.ingress.kubernetes.io/proxy-redirect-to: "/$1"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$host"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
 spec:
-  ingressClassName: nginx
+  ingressClassName: nginx-internal
   tls:
   - hosts:
-    - ceph.dishhome.com.np
-    secretName: dishhome-wildcard-tls
+    - "ceph.dishhome.com.np"
+    secretName: "{{ tls_secret_name | default('dishhome-wildcard-tls') }}"
   rules:
-  - host: ceph.dishhome.com.np
+  - host: "ceph.dishhome.com.np"
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: rook-ceph-mgr-dashboard
+            name: rook-ceph-mgr-dashboard-http
             port:
-              number: 8443
+              number: 7000
