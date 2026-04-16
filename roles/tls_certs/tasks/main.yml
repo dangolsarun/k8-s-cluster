@@ -4,7 +4,14 @@
     path: /tmp/tls_certs
     state: directory
 
-- name: Copy TLS Certificate and Key securely to master
+- name: Check if TLS certificates were provided on the Ansible Controller
+  ansible.builtin.stat:
+    path: "tls.crt"
+  register: local_tls_cert
+  delegate_to: localhost
+  run_once: true
+
+- name: Copy provided TLS Certificate and Key
   ansible.builtin.copy:
     src: "{{ item }}"
     dest: "/tmp/tls_certs/{{ item }}"
@@ -12,6 +19,17 @@
   loop:
     - tls.crt
     - tls.key
+  when: local_tls_cert.stat.exists
+  run_once: true
+
+- name: Generate Self-Signed Wildcard TLS if none provided
+  ansible.builtin.shell: |
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout /tmp/tls_certs/tls.key \
+      -out /tmp/tls_certs/tls.crt \
+      -subj "/C=NP/O=DishHome/CN=*.dishhome.com.np" \
+      -addext "subjectAltName=DNS:*.dishhome.com.np,DNS:*.k8s.dishhome.com.np"
+  when: not local_tls_cert.stat.exists
   run_once: true
 
 - name: Create TLS Secrets in specified namespaces
