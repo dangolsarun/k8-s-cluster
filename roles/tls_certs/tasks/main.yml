@@ -6,14 +6,15 @@
 
 - name: Check if TLS certificates were provided on the Ansible Controller
   ansible.builtin.stat:
-    path: "~/certificates/tls.crt"
+    path: "{{ lookup('env', 'HOME') }}/certificates/tls.crt"
   register: local_tls_cert
   delegate_to: localhost
+  become: false
   run_once: true
 
 - name: Copy provided TLS Certificate and Key
   ansible.builtin.copy:
-    src: "~/certificates/{{ item }}"
+    src: "{{ lookup('env', 'HOME') }}/certificates/{{ item }}"
     dest: "/tmp/tls_certs/{{ item }}"
     mode: '0600'
   loop:
