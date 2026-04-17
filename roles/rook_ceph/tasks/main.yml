@@ -95,9 +95,27 @@
     /var/lib/rancher/rke2/bin/kubectl wait --namespace rook-ceph \
       --for=condition=ready pod \
       --selector=app=rook-ceph-tools \
+      --timeout=180s
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  register: wait_toolbox
+  until: wait_toolbox.rc == 0
+  retries: 5
+  delay: 10
+  run_once: true
+
+- name: Wait for Ceph Manager Pod to be ready
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl wait --namespace rook-ceph \
+      --for=condition=ready pod \
+      --selector=app=rook-ceph-mgr \
       --timeout=300s
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  register: wait_mgr
+  until: wait_mgr.rc == 0
+  retries: 5
+  delay: 30
   run_once: true
 
 - name: Finalize Ceph Dashboard Identity via Toolbox
