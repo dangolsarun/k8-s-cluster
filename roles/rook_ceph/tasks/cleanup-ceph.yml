@@ -1,0 +1,170 @@
+---
+- name: Phase - Complete Ceph Cleanup (Kubernetes Resources)
+  hosts: rke2_servers
+  become: true
+  tags: cleanup
+  tasks:
+    - name: Remove Ceph finalizers from all CRDs
+      ansible.builtin.shell: |
+        for crd in $(kubectl get crd 2>/dev/null | grep rook | awk '{print $1}'); do
+          for ns in $(kubectl get $crd -A --no-headers 2>/dev/null | awk '{print $1}' | sort -u); do
+            for name in $(kubectl get $crd -n $ns --no-headers 2>/dev/null | awk '{print $1}'); do
+              kubectl patch $crd $name -n $ns \
+                --type merge \
+                -p '{"metadata":{"finalizers":[]}}' 2>/dev/null || true
+            done
+          done
+        done
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      run_once: true
+      ignore_errors: true
+
+    - name: Force delete all Ceph custom resources
+      ansible.builtin.shell: |
+        kubectl delete cephblockpool --all -A --force --grace-period=0 2>/dev/null || true
+        kubectl delete cephcluster --all -A --force --grace-period=0 2>/dev/null || true
+        kubectl delete cephfilesystem --all -A --force --grace-period=0 2>/dev/null || true
+        kubectl delete cephobjectstore --all -A --force --grace-period=0 2>/dev/null || true
+        kubectl delete cephclient --all -A --force --grace-period=0 2>/dev/null || true
+        kubectl delete cephnfs --all -A --force --grace-period=0 2>/dev/null || true
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      run_once: true
+      ignore_errors: true
+
+    - name: Uninstall Helm releases
+      ansible.builtin.shell: |
+        helm uninstall rook-ceph-cluster -n rook-ceph 2>/dev/null || true
+        helm uninstall rook-ceph -n rook-ceph 2>/dev/null || true
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+        PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
+      run_once: true
+      ignore_errors: true
+
+    - name: Force delete rook-ceph namespace
+      ansible.builtin.shell: |
+        kubectl delete namespace rook-ceph --force --grace-period=0 2>/dev/null || true
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      run_once: true
+      ignore_errors: true
+
+    - name: Wait for namespace to be fully gone
+      ansible.builtin.shell: |
+        kubectl get namespace rook-ceph 2>&1 | grep -q "NotFound"
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      register: ns_gone
+      retries: 18
+      delay: 10
+      until: ns_gone.rc == 0
+      run_once: true
+      ignore_errors: true
+
+    - name: Clean up cluster-scoped resources
+      ansible.builtin.shell: |
+        kubectl delete clusterroles -l operator=rook 2>/dev/null || true
+        kubectl delete clusterrolebindings -l operator=rook 2>/dev/null || true
+        kubectl delete clusterroles -l app=rook-ceph 2>/dev/null || true
+        kubectl delete clusterrolebindings -l app=rook-ceph 2>/dev/null || true
+        kubectl delete storageclass ceph-block 2>/dev/null || true
+        kubectl delete storageclass ceph-filesystem 2>/dev/null || true
+        kubectl delete storageclass ceph-bucket 2>/dev/null || true
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      run_once: true
+      ignore_errors: true
+
+- name: Phase - Wipe Ceph data from all worker nodes
+  hosts: rke2_agents
+  become: true
+  tags: cleanup
+  tasks:
+    - name: Detect OS disk automatically
+      ansible.builtin.shell: |
+        ROOT_DEV=$(findmnt -n -o SOURCE /)
+        if echo "$ROOT_DEV" | grep -qE "mapper|lvm"; then
+          ROOT_DEV=$(pvs --noheadings -o pv_name 2>/dev/null | head -1 | tr -d ' ')
+        fi
+        BASE=$(lsblk -no pkname "$ROOT_DEV" 2>/dev/null | head -1)
+        if [ -z "$BASE" ]; then
+          BASE=$(echo "$ROOT_DEV" | sed 's/[0-9]*$//' | xargs basename)
+        fi
+        echo "$BASE"
+      register: os_disk
+      changed_when: false
+
+    - name: Show detected OS disk
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} — OS disk: /dev/{{ os_disk.stdout }} (will be skipped)"
+
+    - name: Get all data disks excluding OS disk
+      ansible.builtin.shell: |
+        OS_DISK="{{ os_disk.stdout | trim }}"
+        lsblk -d -o NAME,TYPE --noheadings | \
+          awk '$2=="disk" {print $1}' | \
+          grep -v "^nbd" | \
+          grep -v "^sr" | \
+          grep -v "^loop" | \
+          grep -v "^${OS_DISK}$"
+      register: data_disks
+      changed_when: false
+
+    - name: Show disks that will be wiped
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} — wiping: {{ data_disks.stdout_lines }}"
+
+    - name: Abort if no data disks found
+      ansible.builtin.fail:
+        msg: "No data disks found on {{ inventory_hostname }} — check disk layout"
+      when: data_disks.stdout_lines | length == 0
+
+    - name: Remove device mapper Ceph entries
+      ansible.builtin.shell: |
+        ls /dev/mapper/ 2>/dev/null | grep -i ceph | while read dev; do
+          dmsetup remove --force /dev/mapper/$dev 2>/dev/null || true
+        done
+      ignore_errors: true
+
+    - name: Wipe all data disks
+      ansible.builtin.shell: |
+        DISK="/dev/{{ item }}"
+        echo "=== Wiping $DISK ==="
+        wipefs -af $DISK
+        sgdisk --zap-all $DISK
+        dd if=/dev/zero of=$DISK bs=1M count=200 conv=fsync
+        echo "=== Done $DISK ==="
+      loop: "{{ data_disks.stdout_lines }}"
+
+    - name: Remove rook data directory
+      ansible.builtin.file:
+        path: /var/lib/rook
+        state: absent
+
+    - name: Show final disk state
+      ansible.builtin.shell: |
+        lsblk -o NAME,SIZE,TYPE,FSTYPE | grep -v nbd | grep -v sr0 | grep -v loop
+      register: final_state
+
+    - name: Print final disk state
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} — {{ final_state.stdout_lines }}"
+
+    - name: Fail if ceph_bluestore signatures still present
+      ansible.builtin.shell: |
+        lsblk -o FSTYPE | grep -q ceph_bluestore
+      register: ceph_check
+      failed_when: ceph_check.rc == 0
+      changed_when: false
+    - name: Clean up stale nginx admission webhooks
+      ansible.builtin.shell: |
+        kubectl get validatingwebhookconfiguration 2>/dev/null | \
+          grep -i nginx | awk '{print $1}' | \
+          xargs -r kubectl delete validatingwebhookconfiguration \
+          --ignore-not-found 2>/dev/null || true
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      run_once: true
+      ignore_errors: true

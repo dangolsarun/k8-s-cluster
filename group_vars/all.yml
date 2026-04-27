@@ -24,6 +24,8 @@ enable_iscsi: true
 # TLS & Certificate Management
 tls_secret_name: "dishhome-wildcard-tls"
 tls_namespaces:
+  - "rook-ceph"
+  - "default"
   - "kube-system"
   - "ingress-internal"
   - "ingress-external"

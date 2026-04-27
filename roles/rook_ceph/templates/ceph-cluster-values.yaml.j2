@@ -1,4 +1,5 @@
 operatorNamespace: rook-ceph
+
 cephClusterSpec:
   dataDirHostPath: /var/lib/rook
   dashboard:
@@ -7,9 +8,36 @@ cephClusterSpec:
   mon:
     count: 3
     allowMultiplePerNode: false
+  mgr:
+    count: 2
+    allowMultiplePerNode: false
+    modules:
+      - name: pg_autoscaler
+        enabled: true
+  resources:
+    mgr:
+      limits:
+        memory: "1Gi"
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+    mon:
+      limits:
+        memory: "2Gi"
+      requests:
+        cpu: "1000m"
+        memory: "1Gi"
+    osd:
+      limits:
+        memory: "4Gi"
+      requests:
+        cpu: "1000m"
+        memory: "4Gi"
   storage:
     useAllNodes: true
     useAllDevices: true
+    config:
+      osdsPerDevice: "1"
   placement:
     all:
       nodeAffinity:
@@ -20,6 +48,16 @@ cephClusterSpec:
                   operator: In
                   values:
                     - "true"
+    mon:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - rook-ceph-mon
+            topologyKey: kubernetes.io/hostname
     osd:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
@@ -29,6 +67,31 @@ cephClusterSpec:
                   operator: In
                   values:
                     - "true"
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - rook-ceph-osd
+              topologyKey: kubernetes.io/hostname
+    mgr:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - rook-ceph-mgr
+            topologyKey: kubernetes.io/hostname
+  disruptionManagement:
+    managePodBudgets: true
+    osdMaintenanceTimeout: 30
+    pgHealthCheckTimeout: 0
 
 cephBlockPools:
   - name: ceph-blockpool
@@ -53,8 +116,8 @@ cephBlockPools:
         csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
         csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
         csi.storage.k8s.io/fstype: ext4
+
 cephFileSystems: []
 cephObjectStores: []
-
 toolbox:
   enabled: true

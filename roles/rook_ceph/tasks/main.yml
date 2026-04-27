@@ -1,21 +1,84 @@
 ---
 - name: Add Rook Ceph Helm Repo
-  kubernetes.core.helm_repository:
-    name: rook-release
-    repo_url: "https://charts.rook.io/release"
+  ansible.builtin.shell: |
+    helm repo add rook-release https://charts.rook.io/release
+    helm repo update
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
-- name: Create rook-ceph Namespace and apply PodSecurity labels
+- name: Create rook-ceph namespace and apply PodSecurity labels
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl create namespace rook-ceph --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
-    /var/lib/rancher/rke2/bin/kubectl label --overwrite ns rook-ceph pod-security.kubernetes.io/enforce=privileged
-    /var/lib/rancher/rke2/bin/kubectl label --overwrite ns rook-ceph pod-security.kubernetes.io/audit=privileged
-    /var/lib/rancher/rke2/bin/kubectl label --overwrite ns rook-ceph pod-security.kubernetes.io/warn=privileged
+    /var/lib/rancher/rke2/bin/kubectl create namespace rook-ceph \
+      --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
+    /var/lib/rancher/rke2/bin/kubectl label --overwrite ns rook-ceph \
+      pod-security.kubernetes.io/enforce=privileged \
+      pod-security.kubernetes.io/audit=privileged \
+      pod-security.kubernetes.io/warn=privileged
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
 
-- name: Create Ceph Dashboard TLS Secret
+- name: Deploy Rook Ceph Operator
+  ansible.builtin.shell: |
+    helm upgrade --install rook-ceph rook-release/rook-ceph \
+      --namespace rook-ceph \
+      --version v1.13.7 \
+      --wait \
+      --timeout 300s
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
+  run_once: true
+
+- name: Wait for Rook Ceph operator to be ready
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl wait --namespace rook-ceph \
+      --for=condition=ready pod \
+      --selector=app=rook-ceph-operator \
+      --timeout=180s
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Ensure TLS certificate staging directory exists
+  ansible.builtin.file:
+    path: /tmp/tls_certs
+    state: directory
+    mode: '0700'
+  run_once: true
+
+- name: Check if org TLS certificate exists on Ansible controller
+  ansible.builtin.stat:
+    path: "{{ lookup('env', 'HOME') }}/certificates/tls.crt"
+  register: local_tls_cert
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Copy org TLS certificate and key to master
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/certificates/{{ item }}"
+    dest: "/tmp/tls_certs/{{ item }}"
+    mode: '0600'
+  loop:
+    - tls.crt
+    - tls.key
+  when: local_tls_cert.stat.exists
+  run_once: true
+
+- name: Generate self-signed wildcard TLS if no org cert provided
+  ansible.builtin.shell: |
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout /tmp/tls_certs/tls.key \
+      -out /tmp/tls_certs/tls.crt \
+      -subj "/C=NP/O=DishHome/CN=*.dishhome.com.np" \
+      -addext "subjectAltName=DNS:*.dishhome.com.np,DNS:ceph.dishhome.com.np"
+  when: not local_tls_cert.stat.exists
+  run_once: true
+
+- name: Create TLS secret in rook-ceph namespace
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl create secret tls {{ tls_secret_name }} \
       --cert=/tmp/tls_certs/tls.crt \
@@ -26,21 +89,18 @@
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
 
-- name: Deploy Rook Ceph Operator
+- name: Verify TLS secret exists in rook-ceph
   ansible.builtin.shell: |
-    helm upgrade --install rook-ceph rook-release/rook-ceph \
-      --namespace rook-ceph \
-      --version v1.13.7 \
-      --wait
+    /var/lib/rancher/rke2/bin/kubectl get secret {{ tls_secret_name }} -n rook-ceph
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
-    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
-- name: Ensure temp directory exists
+- name: Ensure temp directory exists for ceph configs
   ansible.builtin.file:
     path: /tmp/rook-ceph
     state: directory
+    mode: '0755'
 
 - name: Create Ceph Cluster Values File
   ansible.builtin.template:
@@ -55,81 +115,63 @@
       --namespace rook-ceph \
       --version v1.13.7 \
       -f /tmp/rook-ceph/ceph-cluster-values.yaml \
-      --wait
+      --wait \
+      --timeout 600s
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
-- name: Create Ceph Dashboard SSL Ingress & HTTP Service Config
-  ansible.builtin.template:
-    src: ceph-dashboard-ingress.yaml.j2
-    dest: /tmp/rook-ceph/ceph-dashboard-ingress.yaml
-    mode: '0644'
-  run_once: true
-
-- name: Create dedicated Dashboard HTTP Service
+- name: Wait for Ceph OSDs to be running
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl apply -f - <<EOF
-    apiVersion: v1
-    kind: Service
-    metadata:
-      name: rook-ceph-mgr-dashboard-http
-      namespace: rook-ceph
-    spec:
-      ports:
-      - name: http-dashboard
-        port: 7000
-        protocol: TCP
-        targetPort: 7000
-      selector:
-        app: rook-ceph-mgr
-        rook_cluster: rook-ceph
-    EOF
+    COUNT=$(/var/lib/rancher/rke2/bin/kubectl get pods -n rook-ceph \
+      --selector=app=rook-ceph-osd \
+      --field-selector=status.phase=Running \
+      --no-headers 2>/dev/null | wc -l)
+    echo "Running OSD count: $COUNT"
+    if [ "$COUNT" -lt "1" ]; then exit 1; fi
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  register: osd_check
+  retries: 30
+  delay: 30
+  until: osd_check.rc == 0
   run_once: true
 
-- name: Wait for Ceph Toolbox Pod to be ready
-  ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl wait --namespace rook-ceph \
-      --for=condition=ready pod \
-      --selector=app=rook-ceph-tools \
-      --timeout=180s
-  environment:
-    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
-  register: wait_toolbox
-  until: wait_toolbox.rc == 0
-  retries: 5
-  delay: 10
-  run_once: true
-
-- name: Wait for Ceph Manager Pod to be ready
+- name: Wait for Ceph MGR to be ready
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl wait --namespace rook-ceph \
       --for=condition=ready pod \
       --selector=app=rook-ceph-mgr \
-      --timeout=300s
+      --timeout=180s
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
-  register: wait_mgr
-  until: wait_mgr.rc == 0
-  retries: 5
-  delay: 30
   run_once: true
 
-- name: Finalize Ceph Dashboard Identity via Toolbox
+- name: Clean up stale nginx admission webhooks
   ansible.builtin.shell: |
-    TOOLS_POD=$(/var/lib/rancher/rke2/bin/kubectl get pod -n rook-ceph -l app=rook-ceph-tools -o jsonpath='{.items[0].metadata.name}')
-    /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph config set mgr mgr/dashboard/external_url https://ceph.dishhome.com.np
-    /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph mgr module disable dashboard
-    /var/lib/rancher/rke2/bin/kubectl exec -n rook-ceph $TOOLS_POD -- ceph mgr module enable dashboard
+    /var/lib/rancher/rke2/bin/kubectl get validatingwebhookconfiguration \
+      -o name 2>/dev/null | grep -i nginx | \
+      xargs -r /var/lib/rancher/rke2/bin/kubectl delete \
+        --ignore-not-found 2>/dev/null || true
+    /var/lib/rancher/rke2/bin/kubectl get mutatingwebhookconfiguration \
+      -o name 2>/dev/null | grep -i nginx | \
+      xargs -r /var/lib/rancher/rke2/bin/kubectl delete \
+        --ignore-not-found 2>/dev/null || true
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
-  register: ceph_dashboard_config
-  until: ceph_dashboard_config.rc == 0
-  retries: 15
-  delay: 20
+  run_once: true
+  ignore_errors: true
+
+- name: Wait for nginx webhook to be re-registered by ingress controller
+  ansible.builtin.pause:
+    seconds: 15
+
+- name: Create Ceph Dashboard Ingress config
+  ansible.builtin.template:
+    src: ceph-dashboard-ingress.yaml.j2
+    dest: /tmp/rook-ceph/ceph-dashboard-ingress.yaml
+    mode: '0644'
   run_once: true
 
 - name: Apply Ceph Dashboard Ingress
@@ -137,4 +179,36 @@
     /var/lib/rancher/rke2/bin/kubectl apply -f /tmp/rook-ceph/ceph-dashboard-ingress.yaml
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Verify ingress exists and has TLS
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl get ingress -n rook-ceph ceph-dashboard -o wide
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  register: ingress_check
+  run_once: true
+
+- name: Print ingress status
+  ansible.builtin.debug:
+    msg: "{{ ingress_check.stdout_lines }}"
+  run_once: true
+
+- name: Verify TLS secret is bound to ingress
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl get secret {{ tls_secret_name }} \
+      -n rook-ceph -o jsonpath='{.type}'
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  register: secret_check
+  run_once: true
+
+- name: Print dashboard access info
+  ansible.builtin.debug:
+    msg:
+      - "Ceph dashboard: https://ceph.dishhome.com.np"
+      - "Internal ingress IP: 192.168.28.125"
+      - "TLS secret type: {{ secret_check.stdout }}"
+      - "Get admin password:"
+      - "kubectl -n rook-ceph get secret rook-ceph-dashboard-password -o jsonpath='{.data.password}' | base64 --decode"
   run_once: true
