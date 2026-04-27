@@ -1,0 +1,49 @@
+grafana:
+  adminPassword: admin
+  service:
+    type: ClusterIP
+    port: 80
+  ingress:
+    enabled: true
+    ingressClassName: nginx-internal
+    annotations:
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    hosts:
+      - health.dishhome.com.np
+    tls:
+      - hosts:
+          - health.dishhome.com.np
+        secretName: "{{ tls_secret_name }}"
+  persistence:
+    enabled: true
+    storageClassName: "ceph-block"
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "ceph-block"
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+
+# Auto-discovery node exporter is enabled by default in the chart, but we explicitly ensure it is enabled here
+nodeExporter:
+  enabled: true
+  hostNetwork: true
+  hostPID: true
+  hostRootfs: true
+
+# The Prometheus Operator and components are allowed to schedule freely to any available nodes
+prometheusOperator:
+  enabled: true
+alertmanager:
+  enabled: true

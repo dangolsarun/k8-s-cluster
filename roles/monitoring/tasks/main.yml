@@ -24,18 +24,37 @@
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
 
+- name: Copy TLS Secret to Monitoring Namespace
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl get secret {{ tls_secret_name }} -n kube-system -o yaml | \
+      sed 's/namespace: kube-system/namespace: monitoring/' | \
+      /var/lib/rancher/rke2/bin/kubectl apply -f -
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Ensure temp directory exists for monitoring configs
+  ansible.builtin.file:
+    path: /tmp/monitoring
+    state: directory
+    mode: '0755'
+  run_once: true
+
+- name: Create Prometheus Values File
+  ansible.builtin.template:
+    src: prometheus-values.yaml.j2
+    dest: /tmp/monitoring/prometheus-values.yaml
+    mode: '0644'
+  run_once: true
+
 - name: Deploy Kube-Prometheus-Stack (Metrics)
   ansible.builtin.shell: |
     helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
       --namespace monitoring \
-      --set grafana.adminPassword=admin \
-      --set grafana.service.type=NodePort \
-      --set grafana.service.nodePort=30080 \
-      --set prometheus.prometheusSpec.nodeSelector."node-role\.kubernetes\.io/control-plane"="true" \
-      --set grafana.nodeSelector."node-role\.kubernetes\.io/control-plane"="true" \
-      --set alertmanager.alertmanagerSpec.nodeSelector."node-role\.kubernetes\.io/control-plane"="true" \
-      --set prometheusOperator.nodeSelector."node-role\.kubernetes\.io/control-plane"="true" \
-      --wait
+      --version 58.2.2 \
+      -f /tmp/monitoring/prometheus-values.yaml \
+      --wait \
+      --timeout 600s
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
@@ -47,9 +66,10 @@
       --namespace monitoring \
       --set promtail.enabled=true \
       --set loki.persistence.enabled=true \
+      --set loki.persistence.storageClassName=ceph-block \
       --set loki.persistence.size=10Gi \
-      --set loki.nodeSelector."node-role\.kubernetes\.io/control-plane"="true" \
-      --wait
+      --wait \
+      --timeout 600s
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
