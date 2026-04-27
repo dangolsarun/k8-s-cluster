@@ -144,6 +144,37 @@ To add a new worker (e.g., `worker4`):
    ```
 *(Rook-Ceph and Observability operators will automatically detect the new node and configure storage and monitoring).*
 
-### 6.2 Upgrading
+### 6.3 Upgrading
 Change `rke2_version` in `group_vars/all.yml` and re-run `site.yml`.
 
+---
+
+## 7. Component Architecture & Justification
+
+To ensure a highly available, secure, and production-ready environment, this deployment utilizes several industry-standard CNCF components. Here is a detailed breakdown of why each component is used and what it does.
+
+### 7.1 Kube-VIP (Control Plane High Availability)
+- **What it does**: Provides a Virtual IP (`192.168.1.100`) that floats between the Master nodes.
+- **Why it's used**: By default, worker nodes and external clients connect directly to a single Master node's IP. If that Master dies, the cluster API becomes unreachable. Kube-VIP ensures that if `master1` fails, the VIP instantly fails over to `master2` or `master3`, guaranteeing zero-downtime access to the Kubernetes API server.
+
+### 7.2 Cilium (Container Network Interface - CNI)
+- **What it does**: Manages all pod-to-pod and node-to-node networking using eBPF (Extended Berkeley Packet Filter) technology natively within the Linux kernel.
+- **Why it's used**: It replaces the default RKE2 Canal CNI because Cilium is significantly faster, highly scalable, and provides advanced features like strict NetworkPolicies, transparent encryption, and deep network observability (Hubble) without the overhead of traditional iptables routing.
+
+### 7.3 MetalLB (Network Load Balancer)
+- **What it does**: Acts as a bare-metal LoadBalancer implementation. It allocates IPs from a reserved pool (e.g., `192.168.28.125-128`) to Kubernetes `Service` objects of type `LoadBalancer`.
+- **Why it's used**: In cloud environments (AWS/GCP), the cloud provider natively provisions LoadBalancers. In bare-metal or on-premise VM environments, Kubernetes cannot automatically provision an external IP. MetalLB bridges this gap by broadcasting these IPs via Layer 2 ARP to your local network router, making your Ingress controllers reachable.
+
+### 7.4 Dual NGINX Ingress (Internal & External Traffic Isolation)
+- **What it does**: We deploy *two* separate NGINX Ingress Controllers instead of the default one. 
+  - **Internal Ingress**: Bound to `192.168.28.125`. Routes traffic for internal admin dashboards (like Ceph) and private company apps.
+  - **External Ingress**: Bound to `192.168.28.127`. Dedicated strictly for public-facing internet traffic.
+- **Why it's used**: Security and isolation. It prevents internal dashboards from accidentally being exposed to the internet. We can easily apply aggressive Web Application Firewalls (WAF) or rate-limiting on the External ingress while keeping the Internal ingress unrestricted for developers.
+
+### 7.5 Rook-Ceph (Distributed Persistent Storage)
+- **What it does**: Turns the raw, unformatted disk drives attached to your Worker nodes into a highly available, distributed storage cluster. It provides `ReadWriteOnce` Block storage (RBD) and `ReadWriteMany` File storage (CephFS) natively to your Pods.
+- **Why it's used**: Pods are ephemeral; if they die, local data is lost. Rook-Ceph replicates data across multiple nodes. If `worker1`'s hard drive fails, the data is safely preserved on `worker2` and `worker3`. The Operator manages the entire lifecycle, self-healing, and dashboarding automatically.
+
+### 7.6 Automated TLS Certificate Management
+- **What it does**: The Ansible `tls_certs` role orchestrates the secure distribution of your organization's Wildcard TLS Certificate (`*.dishhome.com.np`). 
+- **Why it's used**: Copying certificates manually into multiple namespaces is error-prone. The automation checks your local machine for `~/certificates/tls.crt`, securely injects it into Kubernetes as a `Secret`, and loops through necessary namespaces (`kube-system`, `ingress-internal`, `ingress-external`, `rook-ceph`). If it detects a missing certificate during a fresh install, it dynamically generates a valid self-signed fallback to prevent deployment crashes.
