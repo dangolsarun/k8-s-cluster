@@ -17,21 +17,36 @@
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
-- name: Create Monitoring Namespace and apply PodSecurity labels
+- name: Create monitoring namespace and apply PodSecurity labels
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl create namespace monitoring --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
-    /var/lib/rancher/rke2/bin/kubectl label --overwrite ns monitoring pod-security.kubernetes.io/enforce=privileged
-    /var/lib/rancher/rke2/bin/kubectl label --overwrite ns monitoring pod-security.kubernetes.io/audit=privileged
-    /var/lib/rancher/rke2/bin/kubectl label --overwrite ns monitoring pod-security.kubernetes.io/warn=privileged
+    /var/lib/rancher/rke2/bin/kubectl create namespace monitoring \
+      --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
+    /var/lib/rancher/rke2/bin/kubectl label --overwrite ns monitoring \
+      pod-security.kubernetes.io/enforce=privileged \
+      pod-security.kubernetes.io/audit=privileged \
+      pod-security.kubernetes.io/warn=privileged
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
 
-- name: Copy TLS Secret to Monitoring Namespace
+- name: Copy TLS secret to monitoring namespace
   ansible.builtin.shell: |
-    /var/lib/rancher/rke2/bin/kubectl get secret {{ tls_secret_name }} -n kube-system -o yaml | \
-      sed 's/namespace: kube-system/namespace: monitoring/' | \
-      /var/lib/rancher/rke2/bin/kubectl apply -f -
+    /var/lib/rancher/rke2/bin/kubectl get secret {{ tls_secret_name }} \
+      -n kube-system -o json | \
+      /var/lib/rancher/rke2/bin/kubectl run kubectl-helper \
+      --rm --restart=Never --image=bitnami/kubectl:latest \
+      -- sh -c "cat" 2>/dev/null || \
+    /var/lib/rancher/rke2/bin/kubectl get secret {{ tls_secret_name }} \
+      -n kube-system -o json | \
+      python3 -c "
+    import sys, json
+    s = json.load(sys.stdin)
+    s['metadata'] = {
+      'name': s['metadata']['name'],
+      'namespace': 'monitoring'
+    }
+    print(json.dumps(s))
+    " | /var/lib/rancher/rke2/bin/kubectl apply -f -
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
@@ -41,29 +56,49 @@
     path: /tmp/monitoring
     state: directory
     mode: '0755'
-  run_once: true
 
-- name: Create Prometheus Values File
+- name: Create Prometheus values file
   ansible.builtin.template:
     src: prometheus-values.yaml.j2
     dest: /tmp/monitoring/prometheus-values.yaml
     mode: '0644'
   run_once: true
 
-- name: Deploy Kube-Prometheus-Stack (Metrics)
+- name: Deploy kube-prometheus-stack
   ansible.builtin.shell: |
-    helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+    helm upgrade --install kube-prometheus-stack \
+      prometheus-community/kube-prometheus-stack \
       --namespace monitoring \
       --version 58.2.2 \
       -f /tmp/monitoring/prometheus-values.yaml \
       --wait \
-      --timeout 600s
+      --timeout 900s
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
-- name: Deploy Loki-Stack (Logging)
+- name: Wait for Prometheus to be ready
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl wait --namespace monitoring \
+      --for=condition=ready pod \
+      --selector=app.kubernetes.io/name=prometheus \
+      --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Wait for Grafana to be ready
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl wait --namespace monitoring \
+      --for=condition=ready pod \
+      --selector=app.kubernetes.io/name=grafana \
+      --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Deploy Loki-Stack
   ansible.builtin.shell: |
     helm upgrade --install loki grafana/loki-stack \
       --namespace monitoring \
@@ -76,4 +111,71 @@
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
+  run_once: true
+
+- name: Wait for Loki to be ready
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl wait --namespace monitoring \
+      --for=condition=ready pod \
+      --selector=app=loki \
+      --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Clean up stale nginx admission webhooks before ingress creation
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl get validatingwebhookconfiguration \
+      -o name 2>/dev/null | grep -i nginx | \
+      xargs -r /var/lib/rancher/rke2/bin/kubectl delete \
+        --ignore-not-found 2>/dev/null || true
+    /var/lib/rancher/rke2/bin/kubectl get mutatingwebhookconfiguration \
+      -o name 2>/dev/null | grep -i nginx | \
+      xargs -r /var/lib/rancher/rke2/bin/kubectl delete \
+        --ignore-not-found 2>/dev/null || true
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+  ignore_errors: true
+
+- name: Wait for ingress webhook to re-register
+  ansible.builtin.pause:
+    seconds: 15
+
+- name: Create monitoring ingress config
+  ansible.builtin.template:
+    src: monitoring-ingress.yaml.j2
+    dest: /tmp/monitoring/monitoring-ingress.yaml
+    mode: '0644'
+  run_once: true
+
+- name: Apply monitoring ingress
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl apply -f /tmp/monitoring/monitoring-ingress.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
+
+- name: Verify all monitoring pods are running
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl get pods -n monitoring
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  register: monitoring_pods
+  run_once: true
+
+- name: Print monitoring pod status
+  ansible.builtin.debug:
+    msg: "{{ monitoring_pods.stdout_lines }}"
+  run_once: true
+
+- name: Print monitoring access info
+  ansible.builtin.debug:
+    msg:
+      - "Grafana:    https://grafana.dishhome.com.np"
+      - "Prometheus: https://prometheus.dishhome.com.np"
+      - "AlertManager: https://alertmanager.dishhome.com.np"
+      - "Internal ingress IP: 192.168.28.125"
+      - "Get Grafana admin password:"
+      - "kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 --decode"
   run_once: true

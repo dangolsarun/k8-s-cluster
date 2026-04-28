@@ -1,49 +1,152 @@
-grafana:
-  adminPassword: admin
-  service:
-    type: ClusterIP
-    port: 80
-  ingress:
-    enabled: true
-    ingressClassName: nginx-internal
-    annotations:
-      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-      nginx.ingress.kubernetes.io/ssl-redirect: "true"
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    hosts:
-      - health.dishhome.com.np
-    tls:
-      - hosts:
-          - health.dishhome.com.np
-        secretName: "{{ tls_secret_name }}"
-  persistence:
-    enabled: true
-    storageClassName: "ceph-block"
-    accessModes:
-      - ReadWriteOnce
-    size: 10Gi
+# Global settings
+fullnameOverride: kube-prometheus-stack
 
+# Prometheus config
 prometheus:
   prometheusSpec:
-    retention: 15d
+    retention: 30d
+    retentionSize: "40GB"
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: "ceph-block"
+          storageClassName: ceph-block
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
               storage: 50Gi
+    # Auto-discover all ServiceMonitors and PodMonitors across all namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    # Scrape Ceph metrics
+    additionalScrapeConfigs:
+      - job_name: ceph
+        static_configs:
+          - targets:
+            - rook-ceph-mgr.rook-ceph.svc.cluster.local:9283
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "2Gi"
+      limits:
+        memory: "4Gi"
 
-# Auto-discovery node exporter is enabled by default in the chart, but we explicitly ensure it is enabled here
+# Alertmanager config
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: ceph-block
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        memory: "512Mi"
+
+# Grafana config
+grafana:
+  enabled: true
+  adminPassword: "{{ grafana_admin_password | default('ChangeMe123!') }}"
+  persistence:
+    enabled: true
+    storageClassName: ceph-block
+    size: 10Gi
+  # Auto-provision Loki datasource
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      url: http://loki:3100
+      access: proxy
+      isDefault: false
+  grafana.ini:
+    server:
+      root_url: "https://grafana.dishhome.com.np"
+    auth:
+      disable_login_form: false
+    security:
+      allow_embedding: true
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      memory: "1Gi"
+  # Pre-load useful dashboards
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: default
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+  dashboards:
+    default:
+      kubernetes-cluster:
+        gnetId: 7249
+        revision: 1
+        datasource: Prometheus
+      node-exporter:
+        gnetId: 1860
+        revision: 37
+        datasource: Prometheus
+      ceph-cluster:
+        gnetId: 2842
+        revision: 17
+        datasource: Prometheus
+      ceph-osd:
+        gnetId: 5336
+        revision: 9
+        datasource: Prometheus
+
+# Node exporter - runs on ALL nodes automatically including new ones
 nodeExporter:
   enabled: true
-  hostNetwork: true
-  hostPID: true
-  hostRootfs: true
 
-# The Prometheus Operator and components are allowed to schedule freely to any available nodes
-prometheusOperator:
+# Kube state metrics
+kubeStateMetrics:
   enabled: true
-alertmanager:
-  enabled: true
+
+# Default rules
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: true
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: true
+    kubeApiserverBurnrate: true
+    kubeApiserverHistogram: true
+    kubeApiserverSlas: true
+    kubeControllerManager: true
+    kubelet: true
+    kubeProxy: true
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeSchedulerAlerting: true
+    kubeSchedulerRecording: true
+    kubeStateMetrics: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
+
