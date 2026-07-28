@@ -1,38 +1,49 @@
 ---
-# Playbook: Remove Worker Node
-# Usage: ansible-playbook -i inventory.ini remove_worker.yml --limit <worker_hostname_to_remove>
+# Playbook: Remove Control Plane Master Node
+# Usage: ansible-playbook -i inventory.ini updatecluster/remove_master.yml --limit <master_hostname_to_remove>
 
-- name: Drain and Delete Worker Node from Cluster
-  hosts: rke2_agents
+- name: Drain and Delete Master Node from Cluster
+  hosts: rke2_servers
   become: true
   tasks:
-    - name: Drain target worker node
+    - name: Get primary control plane host
+      ansible.builtin.set_fact:
+        primary_master: "{{ (groups['rke2_servers'] | difference([inventory_hostname]))[0] }}"
+
+    - name: Drain target master node
       ansible.builtin.shell: |
         /var/lib/rancher/rke2/bin/kubectl drain {{ inventory_hostname }} \
           --ignore-daemonsets \
           --delete-emptydir-data \
           --force \
           --grace-period=60
-      delegate_to: "{{ groups['rke2_servers'][0] }}"
+      delegate_to: "{{ primary_master }}"
       environment:
         KUBECONFIG: /etc/rancher/rke2/rke2.yaml
       ignore_errors: true
 
-    - name: Delete worker node from Kubernetes
+    - name: Delete node from Kubernetes cluster
       ansible.builtin.shell: |
         /var/lib/rancher/rke2/bin/kubectl delete node {{ inventory_hostname }} --ignore-not-found=true
-      delegate_to: "{{ groups['rke2_servers'][0] }}"
+      delegate_to: "{{ primary_master }}"
       environment:
         KUBECONFIG: /etc/rancher/rke2/rke2.yaml
       ignore_errors: true
 
-- name: Purge RKE2 and System State on Target Worker Host
-  hosts: rke2_agents
+- name: Purge RKE2 and System State on Target Master Host
+  hosts: rke2_servers
   become: true
   tasks:
-    - name: Stop RKE2 Agent service
+    - name: Stop RKE2 Server service
       ansible.builtin.service:
-        name: rke2-agent
+        name: rke2-server
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Stop Kube-VIP service (if present)
+      ansible.builtin.service:
+        name: kube-vip
         state: stopped
         enabled: false
       ignore_errors: true
@@ -49,7 +60,7 @@
         removes: /usr/local/bin/rke2-uninstall.sh
       ignore_errors: true
 
-    - name: Clean up RKE2 directories
+    - name: Clean up RKE2 and Kubernetes directories
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
@@ -59,3 +70,6 @@
         - /var/lib/kubelet
         - /var/lib/cni
         - /etc/kubernetes
+        - /root/.kube
+        - /etc/systemd/system/kube-vip.service
+        - /usr/local/bin/kube-vip

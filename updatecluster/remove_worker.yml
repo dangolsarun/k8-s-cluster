@@ -1,12 +1,12 @@
 ---
-# Playbook: Remove Ceph Agent Node
-# Usage: ansible-playbook -i inventory.ini remove_ceph.yml --limit <ceph_hostname_to_remove>
+# Playbook: Remove Worker Node
+# Usage: ansible-playbook -i inventory.ini updatecluster/remove_worker.yml --limit <worker_hostname_to_remove>
 
-- name: Drain and Delete Ceph Node from Cluster
-  hosts: ceph_agents
+- name: Drain and Delete Worker Node from Cluster
+  hosts: rke2_agents
   become: true
   tasks:
-    - name: Drain target Ceph node
+    - name: Drain target worker node
       ansible.builtin.shell: |
         /var/lib/rancher/rke2/bin/kubectl drain {{ inventory_hostname }} \
           --ignore-daemonsets \
@@ -18,7 +18,7 @@
         KUBECONFIG: /etc/rancher/rke2/rke2.yaml
       ignore_errors: true
 
-    - name: Delete Ceph node from Kubernetes
+    - name: Delete worker node from Kubernetes
       ansible.builtin.shell: |
         /var/lib/rancher/rke2/bin/kubectl delete node {{ inventory_hostname }} --ignore-not-found=true
       delegate_to: "{{ groups['rke2_servers'][0] }}"
@@ -26,8 +26,8 @@
         KUBECONFIG: /etc/rancher/rke2/rke2.yaml
       ignore_errors: true
 
-- name: Purge RKE2 and Rook Ceph State on Target Host
-  hosts: ceph_agents
+- name: Purge RKE2 and System State on Target Worker Host
+  hosts: rke2_agents
   become: true
   tasks:
     - name: Stop RKE2 Agent service
@@ -49,12 +49,11 @@
         removes: /usr/local/bin/rke2-uninstall.sh
       ignore_errors: true
 
-    - name: Wipe Rook Ceph data directory and RKE2 paths
+    - name: Clean up RKE2 directories
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop:
-        - /var/lib/rook
         - /etc/rancher/rke2
         - /var/lib/rancher/rke2
         - /var/lib/kubelet

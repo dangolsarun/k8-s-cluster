@@ -1,0 +1,61 @@
+---
+# Playbook: Add Worker Node
+# Usage: ansible-playbook -i inventory.ini updatecluster/add_worker.yml --limit <new_worker_hostname>
+
+- name: Phase 0 - Bootstrap User (Dictator & SSH Key)
+  hosts: rke2_agents
+  become: true
+  tags: bootstrap
+  vars:
+    target_user: dictator
+  tasks:
+    - name: Ensure target user exists
+      ansible.builtin.user:
+        name: "{{ target_user }}"
+        shell: /bin/bash
+        groups: sudo,wheel,adm
+        append: true
+        state: present
+      ignore_errors: true
+
+    - name: Configure Passwordless Sudo for {{ target_user }}
+      ansible.builtin.copy:
+        content: "{{ target_user }} ALL=(ALL) NOPASSWD: ALL"
+        dest: "/etc/sudoers.d/{{ target_user }}"
+        mode: '0440'
+        validate: 'visudo -cf %s'
+
+    - name: Set up authorized keys for {{ target_user }}
+      ansible.posix.authorized_key:
+        user: "{{ target_user }}"
+        state: present
+        key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+      ignore_errors: true
+
+- name: Phase 1 - Prepare New Worker Node
+  hosts: rke2_agents
+  become: true
+  tags: common
+  roles:
+    - common
+
+- name: Phase 2 - Join New Worker Node to Cluster
+  hosts: rke2_agents
+  become: true
+  tags: join_agent
+  roles:
+    - rke2_agent
+
+- name: Phase 3 - Verify Cluster Worker Status
+  hosts: rke2_servers[0]
+  become: true
+  tasks:
+    - name: Check Kubernetes node readiness
+      ansible.builtin.shell: /var/lib/rancher/rke2/bin/kubectl get nodes --selector='!node-role.kubernetes.io/master,!node-role.kubernetes.io/control-plane' -o wide
+      register: worker_out
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+    - name: Display worker nodes status
+      ansible.builtin.debug:
+        msg: "{{ worker_out.stdout_lines }}"

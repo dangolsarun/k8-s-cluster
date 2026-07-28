@@ -1,49 +1,38 @@
 ---
-# Playbook: Remove Control Plane Master Node
-# Usage: ansible-playbook -i inventory.ini remove_master.yml --limit <master_hostname_to_remove>
+# Playbook: Remove Ceph Agent Node
+# Usage: ansible-playbook -i inventory.ini updatecluster/remove_ceph.yml --limit <ceph_hostname_to_remove>
 
-- name: Drain and Delete Master Node from Cluster
-  hosts: rke2_servers
+- name: Drain and Delete Ceph Node from Cluster
+  hosts: ceph_agents
   become: true
   tasks:
-    - name: Get primary control plane host
-      ansible.builtin.set_fact:
-        primary_master: "{{ (groups['rke2_servers'] | difference([inventory_hostname]))[0] }}"
-
-    - name: Drain target master node
+    - name: Drain target Ceph node
       ansible.builtin.shell: |
         /var/lib/rancher/rke2/bin/kubectl drain {{ inventory_hostname }} \
           --ignore-daemonsets \
           --delete-emptydir-data \
           --force \
           --grace-period=60
-      delegate_to: "{{ primary_master }}"
+      delegate_to: "{{ groups['rke2_servers'][0] }}"
       environment:
         KUBECONFIG: /etc/rancher/rke2/rke2.yaml
       ignore_errors: true
 
-    - name: Delete node from Kubernetes cluster
+    - name: Delete Ceph node from Kubernetes
       ansible.builtin.shell: |
         /var/lib/rancher/rke2/bin/kubectl delete node {{ inventory_hostname }} --ignore-not-found=true
-      delegate_to: "{{ primary_master }}"
+      delegate_to: "{{ groups['rke2_servers'][0] }}"
       environment:
         KUBECONFIG: /etc/rancher/rke2/rke2.yaml
       ignore_errors: true
 
-- name: Purge RKE2 and System State on Target Master Host
-  hosts: rke2_servers
+- name: Purge RKE2 and Rook Ceph State on Target Host
+  hosts: ceph_agents
   become: true
   tasks:
-    - name: Stop RKE2 Server service
+    - name: Stop RKE2 Agent service
       ansible.builtin.service:
-        name: rke2-server
-        state: stopped
-        enabled: false
-      ignore_errors: true
-
-    - name: Stop Kube-VIP service (if present)
-      ansible.builtin.service:
-        name: kube-vip
+        name: rke2-agent
         state: stopped
         enabled: false
       ignore_errors: true
@@ -60,16 +49,14 @@
         removes: /usr/local/bin/rke2-uninstall.sh
       ignore_errors: true
 
-    - name: Clean up RKE2 and Kubernetes directories
+    - name: Wipe Rook Ceph data directory and RKE2 paths
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop:
+        - /var/lib/rook
         - /etc/rancher/rke2
         - /var/lib/rancher/rke2
         - /var/lib/kubelet
         - /var/lib/cni
         - /etc/kubernetes
-        - /root/.kube
-        - /etc/systemd/system/kube-vip.service
-        - /usr/local/bin/kube-vip
