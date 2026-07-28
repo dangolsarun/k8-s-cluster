@@ -1,0 +1,75 @@
+---
+# Playbook: Remove Control Plane Master Node
+# Usage: ansible-playbook -i inventory.ini remove_master.yml --limit <master_hostname_to_remove>
+
+- name: Drain and Delete Master Node from Cluster
+  hosts: rke2_servers
+  become: true
+  tasks:
+    - name: Get primary control plane host
+      ansible.builtin.set_fact:
+        primary_master: "{{ (groups['rke2_servers'] | difference([inventory_hostname]))[0] }}"
+
+    - name: Drain target master node
+      ansible.builtin.shell: |
+        /var/lib/rancher/rke2/bin/kubectl drain {{ inventory_hostname }} \
+          --ignore-daemonsets \
+          --delete-emptydir-data \
+          --force \
+          --grace-period=60
+      delegate_to: "{{ primary_master }}"
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      ignore_errors: true
+
+    - name: Delete node from Kubernetes cluster
+      ansible.builtin.shell: |
+        /var/lib/rancher/rke2/bin/kubectl delete node {{ inventory_hostname }} --ignore-not-found=true
+      delegate_to: "{{ primary_master }}"
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      ignore_errors: true
+
+- name: Purge RKE2 and System State on Target Master Host
+  hosts: rke2_servers
+  become: true
+  tasks:
+    - name: Stop RKE2 Server service
+      ansible.builtin.service:
+        name: rke2-server
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Stop Kube-VIP service (if present)
+      ansible.builtin.service:
+        name: kube-vip
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Execute RKE2 Killall script
+      ansible.builtin.shell: /usr/local/bin/rke2-killall.sh
+      args:
+        removes: /usr/local/bin/rke2-killall.sh
+      ignore_errors: true
+
+    - name: Execute RKE2 Uninstall script
+      ansible.builtin.shell: /usr/local/bin/rke2-uninstall.sh
+      args:
+        removes: /usr/local/bin/rke2-uninstall.sh
+      ignore_errors: true
+
+    - name: Clean up RKE2 and Kubernetes directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/rancher/rke2
+        - /var/lib/rancher/rke2
+        - /var/lib/kubelet
+        - /var/lib/cni
+        - /etc/kubernetes
+        - /root/.kube
+        - /etc/systemd/system/kube-vip.service
+        - /usr/local/bin/kube-vip

@@ -1,0 +1,31 @@
+---
+# Playbook: Add Ceph Agent Node
+# Usage: ansible-playbook -i inventory.ini add_ceph.yml --limit <new_ceph_hostname>
+
+- name: Prepare New Ceph Node
+  hosts: ceph_agents
+  become: true
+  tags: common
+  roles:
+    - common
+
+- name: Join New Ceph Node to Cluster
+  hosts: ceph_agents
+  become: true
+  tags: join_ceph
+  roles:
+    - rke2_agent
+
+- name: Verify Ceph Node Status and Rook Storage Discovery
+  hosts: rke2_servers[0]
+  become: true
+  tasks:
+    - name: Check Ceph nodes readiness in Kubernetes
+      ansible.builtin.shell: /var/lib/rancher/rke2/bin/kubectl get nodes -l node-role.kubernetes.io/ceph=true -o wide
+      register: ceph_nodes_out
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+    - name: Display Ceph nodes status
+      ansible.builtin.debug:
+        msg: "{{ ceph_nodes_out.stdout_lines }}"

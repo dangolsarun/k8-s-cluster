@@ -1,0 +1,31 @@
+---
+# Playbook: Add Control Plane Master Node
+# Usage: ansible-playbook -i inventory.ini add_master.yml --limit <new_master_hostname>
+
+- name: Prepare New Master Node
+  hosts: rke2_servers
+  become: true
+  tags: common
+  roles:
+    - common
+
+- name: Join New Master Node to Cluster
+  hosts: rke2_servers
+  become: true
+  tags: join_server
+  roles:
+    - rke2_server_join
+
+- name: Verify Control Plane Health
+  hosts: rke2_servers[0]
+  become: true
+  tasks:
+    - name: Check Kubernetes node readiness
+      ansible.builtin.shell: /var/lib/rancher/rke2/bin/kubectl get nodes -o wide
+      register: nodes_out
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+
+    - name: Display cluster node status
+      ansible.builtin.debug:
+        msg: "{{ nodes_out.stdout_lines }}"

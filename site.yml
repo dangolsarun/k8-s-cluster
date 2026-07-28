@@ -28,10 +28,17 @@
   roles:
     - rke2_server_join
 
-- name: Phase 5 - Join Worker Nodes
+- name: Phase 5a - Join Worker Nodes
   hosts: rke2_agents
   become: true
   tags: join_agent
+  roles:
+    - rke2_agent
+
+- name: Phase 5b - Join Ceph Storage Nodes
+  hosts: ceph_agents
+  become: true
+  tags: join_ceph
   roles:
     - rke2_agent
 

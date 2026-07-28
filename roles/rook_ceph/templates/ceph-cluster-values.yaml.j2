@@ -44,7 +44,7 @@ cephClusterSpec:
         requiredDuringSchedulingIgnoredDuringExecution:
           nodeSelectorTerms:
             - matchExpressions:
-                - key: node-role.kubernetes.io/worker
+                - key: node-role.kubernetes.io/ceph
                   operator: In
                   values:
                     - "true"
@@ -63,7 +63,7 @@ cephClusterSpec:
         requiredDuringSchedulingIgnoredDuringExecution:
           nodeSelectorTerms:
             - matchExpressions:
-                - key: node-role.kubernetes.io/worker
+                - key: node-role.kubernetes.io/ceph
                   operator: In
                   values:
                     - "true"

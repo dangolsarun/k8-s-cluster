@@ -1,0 +1,61 @@
+---
+# Playbook: Remove Worker Node
+# Usage: ansible-playbook -i inventory.ini remove_worker.yml --limit <worker_hostname_to_remove>
+
+- name: Drain and Delete Worker Node from Cluster
+  hosts: rke2_agents
+  become: true
+  tasks:
+    - name: Drain target worker node
+      ansible.builtin.shell: |
+        /var/lib/rancher/rke2/bin/kubectl drain {{ inventory_hostname }} \
+          --ignore-daemonsets \
+          --delete-emptydir-data \
+          --force \
+          --grace-period=60
+      delegate_to: "{{ groups['rke2_servers'][0] }}"
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      ignore_errors: true
+
+    - name: Delete worker node from Kubernetes
+      ansible.builtin.shell: |
+        /var/lib/rancher/rke2/bin/kubectl delete node {{ inventory_hostname }} --ignore-not-found=true
+      delegate_to: "{{ groups['rke2_servers'][0] }}"
+      environment:
+        KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+      ignore_errors: true
+
+- name: Purge RKE2 and System State on Target Worker Host
+  hosts: rke2_agents
+  become: true
+  tasks:
+    - name: Stop RKE2 Agent service
+      ansible.builtin.service:
+        name: rke2-agent
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Execute RKE2 Killall script
+      ansible.builtin.shell: /usr/local/bin/rke2-killall.sh
+      args:
+        removes: /usr/local/bin/rke2-killall.sh
+      ignore_errors: true
+
+    - name: Execute RKE2 Uninstall script
+      ansible.builtin.shell: /usr/local/bin/rke2-uninstall.sh
+      args:
+        removes: /usr/local/bin/rke2-uninstall.sh
+      ignore_errors: true
+
+    - name: Clean up RKE2 directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/rancher/rke2
+        - /var/lib/rancher/rke2
+        - /var/lib/kubelet
+        - /var/lib/cni
+        - /etc/kubernetes

@@ -49,6 +49,17 @@
   when: node_ready.stdout == "True"
   ignore_errors: true
 
+- name: Label node as ceph agent (when part of ceph_agents)
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/ceph=true --overwrite
+  environment:
+    KUBECONFIG: /home/dictator/.kube/config
+  delegate_to: "{{ groups['rke2_servers'][0] }}"
+  when: 
+    - node_ready.stdout == "True"
+    - "'ceph_agents' in groups and inventory_hostname in groups['ceph_agents']"
+  ignore_errors: true
+
 - name: Add RKE2 binaries to GLOBAL PATH
   ansible.builtin.copy:
     dest: /etc/profile.d/rke2.sh
