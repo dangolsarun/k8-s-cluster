@@ -9,11 +9,15 @@
   vars:
     target_user: dictator
   tasks:
+    - name: Set OS-specific admin group fact
+      ansible.builtin.set_fact:
+        admin_groups: "{{ 'sudo,adm' if ansible_os_family == 'Debian' else 'wheel' }}"
+
     - name: Ensure target user exists
       ansible.builtin.user:
         name: "{{ target_user }}"
         shell: /bin/bash
-        groups: sudo,wheel,adm
+        groups: "{{ admin_groups }}"
         append: true
         state: present
       ignore_errors: true

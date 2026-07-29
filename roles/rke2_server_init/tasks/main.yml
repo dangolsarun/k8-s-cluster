@@ -78,13 +78,14 @@
     state: link
     force: true
 
-- name: Create .kube directory for user
+- name: Create .kube directory for non-root user
   ansible.builtin.file:
     path: "/home/{{ ansible_user }}/.kube"
     state: directory
     owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
     mode: '0700'
+  when: ansible_user != 'root'
+  ignore_errors: true
 
 - name: Copy kubeconfig to user home
   ansible.builtin.copy:
@@ -93,6 +94,8 @@
     remote_src: true
     owner: "{{ ansible_user }}"
     mode: '0600'
+  when: ansible_user != 'root'
+  ignore_errors: true
 
 - name: Install Helm
   ansible.builtin.shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash

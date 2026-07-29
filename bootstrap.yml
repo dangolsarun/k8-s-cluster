@@ -1,22 +1,24 @@
 ---
+# Cross-OS Bootstrap 'dictator' User (Ubuntu, Debian, Rocky, AlmaLinux, RHEL, CentOS, SUSE)
 - name: Bootstrap 'dictator' User
   hosts: all
   become: true
   vars:
-    # Set this to the user you want to manage (already created manually or by this playbook)
     target_user: dictator
   
   tasks:
-    - name: Ensure target user exists
+    - name: Set OS-specific admin group fact
+      ansible.builtin.set_fact:
+        admin_groups: "{{ 'sudo,adm' if ansible_os_family == 'Debian' else 'wheel' }}"
+
+    - name: Ensure target user exists with proper OS admin group
       ansible.builtin.user:
         name: "{{ target_user }}"
         shell: /bin/bash
-        groups: sudo,wheel,adm
+        groups: "{{ admin_groups }}"
         append: true
         state: present
-      # We assume the user creates 'dictator' manually with password first, or we could set password here.
-      # For now, we just ensure it exists and has groups.
-      ignore_errors: true # In case 'wheel' group doesn't exist on Ubuntu (it uses sudo)
+      ignore_errors: true
 
     - name: Configure Passwordless Sudo for {{ target_user }}
       ansible.builtin.copy:
@@ -30,4 +32,4 @@
         user: "{{ target_user }}"
         state: present
         key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
-      # Failing here means the controller has no SSH key. Run 'ssh-keygen' on controller first!
+      ignore_errors: true

@@ -32,7 +32,7 @@
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl get nodes {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
   environment:
-    KUBECONFIG: /home/dictator/.kube/config
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   delegate_to: "{{ groups['rke2_servers'][0] }}"
   register: node_ready
   until: node_ready.stdout == "True"
@@ -44,7 +44,7 @@
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker=true --overwrite
   environment:
-    KUBECONFIG: /home/dictator/.kube/config
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   delegate_to: "{{ groups['rke2_servers'][0] }}"
   when: node_ready.stdout == "True"
   ignore_errors: true
@@ -53,7 +53,7 @@
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/ceph=true --overwrite
   environment:
-    KUBECONFIG: /home/dictator/.kube/config
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   delegate_to: "{{ groups['rke2_servers'][0] }}"
   when: 
     - node_ready.stdout == "True"

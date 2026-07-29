@@ -1,6 +1,7 @@
 ---
-- name: Disable Firewall (UFW/Firewalld)
-  # For RKE2 it's often easier to disable host firewalls and rely on Network Policies
+# Universal Linux Common OS Preparation (Ubuntu, Debian, Rocky, AlmaLinux, RHEL, CentOS, Fedora, SUSE)
+
+- name: Disable Firewall Services (UFW / Firewalld / Cloud setup)
   ansible.builtin.service:
     name: "{{ item }}"
     state: stopped
@@ -12,19 +13,9 @@
     - nm-cloud-setup
     - nm-cloud-setup.timer
 
-- name: Disable NetworkManager Cloud Setup (Rocky/RHEL)
-  ansible.builtin.service:
-    name: "{{ item }}"
-    state: stopped
-    enabled: false
-  ignore_errors: true
-  loop:
-    - nm-cloud-setup
-    - nm-cloud-setup.timer
-
 - name: Disable Swap
   ansible.builtin.command: swapoff -a
-  when: ansible_swaptotal_mb > 0
+  when: ansible_swaptotal_mb | default(0) > 0
   changed_when: false
 
 - name: Remove Swap from /etc/fstab
@@ -33,15 +24,28 @@
     regexp: '^([^#].*swap.*)$'
     replace: '# \1'
 
-- name: Load Kernel Modules
+- name: Ensure Kernel Modules config file exists for boot persistence
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+      rbd
+      iscsi_tcp
+    mode: '0644'
+
+- name: Load Required Kernel Modules
   community.general.modprobe:
     name: "{{ item }}"
     state: present
+  ignore_errors: true
   loop:
     - overlay
     - br_netfilter
+    - rbd
+    - iscsi_tcp
 
-- name: Configure Sysctl for Kubernetes
+- name: Configure Sysctl Parameters for Kubernetes & RKE2
   ansible.posix.sysctl:
     name: "{{ item.key }}"
     value: "{{ item.value }}"
@@ -51,19 +55,80 @@
     - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
     - { key: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
     - { key: 'net.ipv4.ip_forward', value: '1' }
-    # CIS Hardening Requirements for RKE2
     - { key: 'vm.overcommit_memory', value: '1' }
     - { key: 'kernel.panic', value: '10' }
     - { key: 'kernel.panic_on_oops', value: '1' }
+    - { key: 'fs.inotify.max_user_watches', value: '524288' }
+    - { key: 'fs.inotify.max_user_instances', value: '8192' }
 
-- name: Install Dependencies
-  ansible.builtin.package:
+- name: Install Dependencies (Debian / Ubuntu Family)
+  ansible.builtin.apt:
     name:
       - curl
+      - tar
       - socat
       - nfs-common
       - open-iscsi
+      - lvm2
+      - iptables
+      - ca-certificates
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  ignore_errors: true
+
+- name: Install Dependencies (RedHat / Rocky / AlmaLinux / RHEL / CentOS / Fedora)
+  ansible.builtin.dnf:
+    name:
+      - curl
+      - tar
+      - socat
+      - nfs-utils
+      - iscsi-initiator-utils
+      - lvm2
+      - iptables
+      - ca-certificates
+      - kernel-modules-extra
       - container-selinux
       - selinux-policy-base
     state: present
-  ignore_errors: true # Some packages might not exist on all distros
+  when: ansible_os_family == 'RedHat'
+  ignore_errors: true
+
+- name: Install Dependencies (SUSE / openSUSE Family)
+  ansible.builtin.zypper:
+    name:
+      - curl
+      - tar
+      - socat
+      - nfs-client
+      - open-iscsi
+      - lvm2
+      - iptables
+      - ca-certificates
+    state: present
+  when: ansible_os_family == 'Suse'
+  ignore_errors: true
+
+- name: Fallback Dependency Installation for Other Linux Distros
+  ansible.builtin.package:
+    name:
+      - curl
+      - tar
+      - socat
+      - lvm2
+      - iptables
+    state: present
+  when: ansible_os_family not in ['Debian', 'RedHat', 'Suse']
+  ignore_errors: true
+
+- name: Enable and Start iSCSI Service (Required for Storage / Ceph)
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  ignore_errors: true
+  loop:
+    - iscsid
+    - iscsid.service
+    - iscsid.socket
