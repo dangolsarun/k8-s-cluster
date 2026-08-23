@@ -4,36 +4,48 @@ This Ansible project automates the deployment of a highly available, CIS-hardene
 
 ## Architecture
 
-- **Control Plane**: 3 Master Nodes (Stacked Etcd + API + Controller)
-- **Data Plane**: 4 Worker Nodes
+- **Control Plane**: 3 Master Nodes (`rke2_servers`)
+- **Data Plane**: General Worker Nodes (`rke2_agents`)
+- **Storage Plane**: Dedicated / Co-located Ceph Storage Nodes (`ceph_agents`)
 - **VIP**: `kube-vip` provides a floating IP for the HA Control Plane.
 - **Networking**: Cilium CNI (replacing default Canal).
 - **Security**: Hardened to `cis-1.23` profile by default.
-- **Storage**: Rook-Ceph providing HA resilient block/file storage leveraging empty disks across workers.
+- **Storage**: Rook-Ceph providing HA resilient block/file storage leveraging empty disks across Ceph nodes.
 
 
 ## Prerequisites
 
 - **Ansible 2.10+** installed on the controller machine.
-- **SSH Access**: Passwordless SSH root/sudo access to all 7 nodes.
+- **SSH Access**: Passwordless SSH root/sudo access to all nodes.
 - **Operating System**: Ubuntu 20.04/22.04 LTS, Rocky Linux 9, or RHEL 8/9.
 - **Resources**:
   - Masters: 2 vCPU, 4GB RAM minimum (4 vCPU, 8GB recommended).
-  - Workers: Depends on workload.
+  - Workers / Ceph Nodes: Depends on workload and storage capacity.
 
 ## Configuration
 
 ### 1. Inventory (`inventory.ini`)
-Update the IP addresses for your masters and workers.
+Update the IP addresses for your masters, workers, and Ceph storage nodes:
 ```ini
 [rke2_servers]
-master-1 ansible_host=10.0.0.10
-master-2 ansible_host=10.0.0.11
-master-3 ansible_host=10.0.0.12
+master1 ansible_host=192.168.28.120
+master2 ansible_host=192.168.28.121
+master3 ansible_host=192.168.28.122
 
 [rke2_agents]
-worker-1 ansible_host=10.0.0.20
-...
+worker1 ansible_host=192.168.28.130
+worker2 ansible_host=192.168.28.131
+worker3 ansible_host=192.168.28.132
+
+[ceph_agents]
+ceph1 ansible_host=192.168.28.130
+ceph2 ansible_host=192.168.28.131
+ceph3 ansible_host=192.168.28.132
+
+[k8s_cluster:children]
+rke2_servers
+rke2_agents
+ceph_agents
 ```
 
 ### 2. Global Variables (`group_vars/all.yml`)

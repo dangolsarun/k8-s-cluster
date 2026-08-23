@@ -77,8 +77,8 @@
       run_once: true
       ignore_errors: true
 
-- name: Phase - Wipe Ceph data from all worker nodes
-  hosts: rke2_agents
+- name: Phase - Wipe Ceph data from all Ceph agent nodes
+  hosts: ceph_agents
   become: true
   tags: cleanup
   tasks:

@@ -64,7 +64,7 @@
   roles:
     - rook_ceph
 
-- name: Phase 8 - Setup Observability (Monitoring & Logging)
+- name: Phase 9 - Setup Observability (Monitoring & Logging)
   hosts: rke2_servers
   become: true
   tags: monitoring

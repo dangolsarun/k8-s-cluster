@@ -60,3 +60,48 @@
         - /var/lib/kubelet
         - /var/lib/cni
         - /etc/kubernetes
+
+    - name: Remove device mapper Ceph entries
+      ansible.builtin.shell: |
+        ls /dev/mapper/ 2>/dev/null | grep -i ceph | while read dev; do
+          dmsetup remove --force /dev/mapper/$dev 2>/dev/null || true
+        done
+      ignore_errors: true
+
+    - name: Detect OS disk automatically
+      ansible.builtin.shell: |
+        ROOT_DEV=$(findmnt -n -o SOURCE /)
+        if echo "$ROOT_DEV" | grep -qE "mapper|lvm"; then
+          ROOT_DEV=$(pvs --noheadings -o pv_name 2>/dev/null | head -1 | tr -d ' ')
+        fi
+        BASE=$(lsblk -no pkname "$ROOT_DEV" 2>/dev/null | head -1)
+        if [ -z "$BASE" ]; then
+          BASE=$(echo "$ROOT_DEV" | sed 's/[0-9]*$//' | xargs basename)
+        fi
+        echo "$BASE"
+      register: os_disk
+      changed_when: false
+      ignore_errors: true
+
+    - name: Get all data disks excluding OS disk
+      ansible.builtin.shell: |
+        OS_DISK="{{ os_disk.stdout | trim }}"
+        lsblk -d -o NAME,TYPE --noheadings | \
+          awk '$2=="disk" {print $1}' | \
+          grep -v "^nbd" | \
+          grep -v "^sr" | \
+          grep -v "^loop" | \
+          grep -v "^${OS_DISK}$"
+      register: data_disks
+      changed_when: false
+      ignore_errors: true
+
+    - name: Wipe all target host data disks
+      ansible.builtin.shell: |
+        DISK="/dev/{{ item }}"
+        wipefs -af $DISK
+        sgdisk --zap-all $DISK
+        dd if=/dev/zero of=$DISK bs=1M count=100 conv=fsync
+      loop: "{{ data_disks.stdout_lines | default([]) }}"
+      ignore_errors: true
+

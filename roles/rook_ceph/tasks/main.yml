@@ -102,6 +102,18 @@
     state: directory
     mode: '0755'
 
+- name: Verify Ceph storage nodes are present and ready in cluster
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl get nodes -l node-role.kubernetes.io/ceph=true --no-headers | grep -i "Ready"
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  register: ceph_nodes_ready
+  retries: 15
+  delay: 10
+  until: ceph_nodes_ready.rc == 0
+  run_once: true
+  ignore_errors: true
+
 - name: Create Ceph Cluster Values File
   ansible.builtin.template:
     src: ceph-cluster-values.yaml.j2

@@ -40,13 +40,15 @@
   delay: 10
   ignore_errors: true
 
-- name: Label node as worker explicitly (Workaround for RKE2 label format issue)
+- name: Label node as worker explicitly (when part of rke2_agents)
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker=true --overwrite
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   delegate_to: "{{ groups['rke2_servers'][0] }}"
-  when: node_ready.stdout == "True"
+  when:
+    - node_ready.stdout == "True"
+    - "'rke2_agents' in groups and inventory_hostname in groups['rke2_agents']"
   ignore_errors: true
 
 - name: Label node as ceph agent (when part of ceph_agents)
