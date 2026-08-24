@@ -36,7 +36,7 @@
     - rke2_agent
 
 - name: Phase 5b - Join Ceph Storage Nodes
-  hosts: ceph_agents
+  hosts: rke2_agents
   become: true
   tags: join_ceph
   roles:
