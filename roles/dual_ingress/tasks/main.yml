@@ -11,7 +11,7 @@
     name:
       - kubernetes
       - pyyaml
-    extra_args: --user
+    extra_args: --user --break-system-packages
   run_once: true
 
 - name: Cleanup legacy RKE2 ingress manifests
