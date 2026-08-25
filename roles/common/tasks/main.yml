@@ -132,3 +132,37 @@
     - iscsid
     - iscsid.service
     - iscsid.socket
+    
+- name: Ensure systemd-timesyncd is installed (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: systemd-timesyncd
+    state: present
+  when: ansible_os_family == 'Debian'
+  ignore_errors: true
+
+- name: Ensure chrony is installed (RedHat family)
+  ansible.builtin.dnf:
+    name: chrony
+    state: present
+  when: ansible_os_family == 'RedHat'
+  ignore_errors: true
+
+- name: Enable NTP time sync
+  ansible.builtin.command: timedatectl set-ntp true
+  changed_when: true
+
+- name: Enable and start systemd-timesyncd (Debian/Ubuntu)
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    state: started
+    enabled: true
+  when: ansible_os_family == 'Debian'
+  ignore_errors: true
+
+- name: Enable and start chronyd (RedHat family)
+  ansible.builtin.systemd:
+    name: chronyd
+    state: started
+    enabled: true
+  when: ansible_os_family == 'RedHat'
+  ignore_errors: true
