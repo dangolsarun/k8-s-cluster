@@ -38,6 +38,10 @@ cephClusterSpec:
     useAllDevices: true
     config:
       osdsPerDevice: "1"
+    nodes:
+{% for host in groups['ceph_agents'] %}
+      - name: "{{ host }}"
+{% endfor %}
   placement:
     all:
       nodeAffinity:
