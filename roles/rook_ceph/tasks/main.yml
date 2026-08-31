@@ -224,3 +224,13 @@
       - "Get admin password:"
       - "kubectl -n rook-ceph get secret rook-ceph-dashboard-password -o jsonpath='{.data.password}' | base64 --decode"
   run_once: true
+
+- name: Enable continuous device discovery
+  ansible.builtin.shell: |
+    /var/lib/rancher/rke2/bin/kubectl set env deployment/rook-ceph-operator \
+      -n rook-ceph \
+      ROOK_ENABLE_DISCOVERY_DAEMON=true \
+      ROOK_DISCOVER_DEVICES_INTERVAL=5m
+  environment:
+    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
+  run_once: true
