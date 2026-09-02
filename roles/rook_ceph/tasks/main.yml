@@ -25,12 +25,17 @@
     helm upgrade --install rook-ceph rook-release/rook-ceph \
       --namespace rook-ceph \
       --version v1.13.7 \
+      --set csi.enableRbdDriver=true \
+      --set csi.enableCephfsDriver=true \
+      --set enableDiscoveryDaemon=true \
+      --set discoveryDaemonInterval=5m \
       --wait \
       --timeout 300s
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
+  
 
 - name: Enable continuous device discovery
   ansible.builtin.shell: |
