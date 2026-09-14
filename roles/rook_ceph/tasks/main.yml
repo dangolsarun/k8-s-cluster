@@ -52,7 +52,7 @@
     /var/lib/rancher/rke2/bin/kubectl wait --namespace rook-ceph \
       --for=condition=ready pod \
       --selector=app=rook-ceph-operator \
-      --timeout=180s
+      --timeout=300s
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
   run_once: true
