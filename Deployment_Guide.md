@@ -199,80 +199,76 @@ To ensure a highly available, secure, and production-ready environment, this dep
 
 ### 7.6 Automated TLS Certificate Management
 - **What it does**: The Ansible `tls_certs` role orchestrates the secure distribution of your organization's Wildcard TLS Certificate (`*.dishhome.com.np`). 
-- **Why it's used**: Copying certificates manually into multiple namespaces is error-prone. The automation checks your local machine for `~/certificates/tls.crt`, securely injects it into Kubernetes as a `Secret`, and loops through necessary namespaces (`kube-system`, `ingress-internal`, `ingress-external`, `rook-ceph`, `devops-harbor`, `devops-argocd`, `devops-gitlab-runner`). If it detects a missing certificate during a fresh install, it dynamically generates a valid self-signed fallback to prevent deployment crashes.
+- **Why it's used**: Copying certificates manually into multiple namespaces is error-prone. The automation checks your local machine for `~/certificates/tls.crt`, securely injects it into Kubernetes as a `Secret`, and loops through necessary namespaces (`kube-system`, `ingress-internal`, `ingress-external`, `rook-ceph`, `devops-harbor`, `devops-argocd`). If it detects a missing certificate during a fresh install, it dynamically generates a valid self-signed fallback to prevent deployment crashes.
 
 ---
 
-## 8. Phase 10: DevOps Platform Deployment
+## 8. Phase 10: DevOps Platform Deployment (Harbor & Argo CD)
 
-### 8.1 Component Overview
+### 8.1 Architecture & Production Best Practices
+For production security and resource isolation, **GitLab and GitLab Runner are hosted on a dedicated external VM (`gitlab.dishhome.com.np`)**, completely separated from the Kubernetes cluster:
+- **Dedicated VM Isolation**: Heavy container image builds do not consume CPU/RAM resources on your RKE2 cluster nodes.
+- **Harbor Registry** (`harbor.dishhome.com.np`): Deployed inside the RKE2 cluster on **Internal Ingress (`192.168.28.125`)**, utilizing Rook-Ceph (`rook-ceph-block`) for persistent database, cache, vulnerability DB (Trivy), and image blob storage.
+- **Argo CD GitOps Engine** (`argocd.dishhome.com.np`): Deployed inside the RKE2 cluster on **Internal Ingress (`192.168.28.125`)**, pulling Kubernetes application manifests directly from GitLab and auto-synchronizing changes.
+
+### 8.2 Component Breakdown
 - **Harbor Enterprise Container Registry** (`harbor.dishhome.com.np`):
   - Ingress: Internal (`192.168.28.125`, `nginx-internal` class)
   - Namespace: `devops-harbor`
-  - Storage: Persistent Block storage (`rook-ceph-block`) for PostgreSQL, Redis, Trivy vulnerability DB, and registry image blobs.
-  - Ingress configuration tuned with `proxy-body-size: "0"` for unlimited image layer payload size.
+  - Storage: Persistent Block storage (`rook-ceph-block`) for PostgreSQL, Redis, Trivy scanner, and registry image blobs.
+  - Ingress configuration tuned with `proxy-body-size: "0"` for unlimited image layer upload size.
 - **Argo CD GitOps Controller** (`argocd.dishhome.com.np`):
   - Ingress: Internal (`192.168.28.125`, `nginx-internal` class)
   - Namespace: `devops-argocd`
   - Storage: Persistent storage (`rook-ceph-block`) for Redis cache.
   - Server configured in `--insecure` mode behind NGINX TLS termination.
-- **GitLab Kubernetes Runner**:
-  - Namespace: `devops-gitlab-runner`
-  - Executor: Kubernetes pod executor with auto-scaling build pods.
-  - Integrated with external GitLab (`https://gitlab.dishhome.com.np`).
 
-### 8.2 Deployment Instructions
+### 8.3 Deployment Instructions
 
-1. **Configure GitLab Runner Token**:
-   Edit `group_vars/all.yml` and replace `CHANGE_ME_GITLAB_RUNNER_TOKEN` with your GitLab Runner Registration or Authentication token:
-   ```yaml
-   gitlab_url: "https://gitlab.dishhome.com.np"
-   gitlab_runner_token: "glrt-YOUR_ACTUAL_TOKEN_HERE"
-   ```
-
-2. **Run Ansible Playbook**:
+1. **Run Ansible Playbook**:
    ```bash
    ansible-playbook site.yml -u dictator --tags devops
    ```
 
-3. **Verify Deployment**:
+2. **Verify Deployment**:
    ```bash
    # Check Pod status in devops namespaces
    sudo /var/lib/rancher/rke2/bin/kubectl get pods -n devops-harbor
    sudo /var/lib/rancher/rke2/bin/kubectl get pods -n devops-argocd
-   sudo /var/lib/rancher/rke2/bin/kubectl get pods -n devops-gitlab-runner
 
    # Get Argo CD initial admin password
    sudo /var/lib/rancher/rke2/bin/kubectl -n devops-argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
    ```
 
-### 8.3 DNS Setup
-Ensure your internal DNS server or workstation `/etc/hosts` resolves the domains to the **Internal Ingress IP (`192.168.28.125`)**:
+### 8.4 DNS Setup
+Ensure your internal network DNS server or workstation `/etc/hosts` resolves the domains to the **Internal Ingress IP (`192.168.28.125`)**:
 ```text
 192.168.28.125 harbor.dishhome.com.np
 192.168.28.125 argocd.dishhome.com.np
 ```
 
-### 8.4 Recommended CI/CD Workflow (GitLab CI -> Harbor -> Argo CD)
+### 8.5 Production CI/CD Integration Workflow
+
+1. **External Dedicated VM Runner** (`gitlab.dishhome.com.np`):
+   - Executes build pipelines using Docker / Shell / Docker-in-Docker executor.
+   - Pushes built container images directly to `harbor.dishhome.com.np` (Internal Ingress `192.168.28.125`).
+2. **GitLab Repository Update**:
+   - The CI job updates image tags in your application manifest Git repository on `gitlab.dishhome.com.np`.
+3. **Argo CD Auto-Sync**:
+   - Argo CD running in RKE2 detects updated Git manifests from GitLab and deploys the new pods to the Kubernetes cluster automatically.
 
 ```yaml
-# Sample .gitlab-ci.yml using Kaniko for rootless Docker builds inside Kubernetes Runner
+# Sample .gitlab-ci.yml on your external GitLab Runner
 stages:
   - build
+  - deploy
 
-build_image:
+build_and_push:
   stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:debug
-    entrypoint: [""]
   script:
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"https://harbor.dishhome.com.np\":{\"username\":\"admin\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
-    - /kaniko/executor
-      --context "${CI_PROJECT_DIR}"
-      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
-      --destination "harbor.dishhome.com.np/library/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA}"
-  tags:
-    - k8s
+    - docker login https://harbor.dishhome.com.np -u "$HARBOR_USER" -p "$HARBOR_PASSWORD"
+    - docker build -t harbor.dishhome.com.np/library/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA} .
+    - docker push harbor.dishhome.com.np/library/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA}
 ```
+
 

@@ -5,18 +5,17 @@
     state: directory
     mode: '0755'
 
-- name: Add Helm Repositories for Harbor, Argo CD, and GitLab Runner
+- name: Add Helm Repositories for Harbor and Argo CD
   ansible.builtin.shell: |
     helm repo add goharbor https://helm.goharbor.io
     helm repo add argo https://argoproj.github.io/argo-helm
-    helm repo add gitlab https://charts.gitlab.io
     helm repo update
   environment:
     KUBECONFIG: /etc/rancher/rke2/rke2.yaml
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
-- name: Create Namespaces for DevOps Platform
+- name: Create Namespaces for DevOps Platform (Harbor & Argo CD)
   ansible.builtin.shell: |
     /var/lib/rancher/rke2/bin/kubectl create namespace {{ item }} --dry-run=client -o yaml | /var/lib/rancher/rke2/bin/kubectl apply -f -
   environment:
@@ -24,7 +23,6 @@
   loop:
     - "{{ harbor_namespace }}"
     - "{{ argocd_namespace }}"
-    - "{{ gitlab_runner_namespace }}"
   run_once: true
 
 - name: Render Harbor Helm values
@@ -67,32 +65,11 @@
     PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
   run_once: true
 
-- name: Render GitLab Runner Helm values
-  ansible.builtin.template:
-    src: gitlab-runner-values.yaml.j2
-    dest: /tmp/devops/gitlab-runner-values.yaml
-    mode: '0644'
-  run_once: true
-
-- name: Deploy GitLab Runner (if token is configured)
-  ansible.builtin.shell: |
-    helm upgrade --install gitlab-runner gitlab/gitlab-runner \
-      --namespace {{ gitlab_runner_namespace }} \
-      --version {{ gitlab_runner_chart_version }} \
-      -f /tmp/devops/gitlab-runner-values.yaml \
-      --wait \
-      --timeout 300s
-  environment:
-    KUBECONFIG: /etc/rancher/rke2/rke2.yaml
-    PATH: "/usr/local/bin:{{ ansible_env.PATH }}"
-  when: gitlab_runner_token != "CHANGE_ME_GITLAB_RUNNER_TOKEN" and gitlab_runner_token != ""
-  run_once: true
-
 - name: Print DevOps Platform Deployment Summary
   ansible.builtin.debug:
     msg:
       - "=================================================================="
-      - "DEVOPS PLATFORM DEPLOYMENT COMPLETE"
+      - "DEVOPS PLATFORM DEPLOYMENT COMPLETE (Harbor & Argo CD)"
       - "=================================================================="
       - "Harbor Registry:   https://{{ harbor_domain }} (Internal Ingress 192.168.28.125)"
       - "  Admin Username:  admin"
@@ -102,6 +79,7 @@
       - "  Admin Username:  admin"
       - "  Get Password:    kubectl -n {{ argocd_namespace }} get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
       - "------------------------------------------------------------------"
-      - "GitLab Runner:     Namespace '{{ gitlab_runner_namespace }}' (Connected to {{ gitlab_url }})"
+      - "External GitLab:   {{ gitlab_url }} (GitLab & Runner hosted on dedicated VM)"
       - "=================================================================="
   run_once: true
+
