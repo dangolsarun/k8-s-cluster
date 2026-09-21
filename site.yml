@@ -71,6 +71,14 @@
   roles:
     - monitoring
 
+- name: Phase 10 - Deploy DevOps Platform (Harbor, Argo CD, GitLab Runner)
+  hosts: rke2_servers[0]
+  become: true
+  tags: devops
+  roles:
+    - devops_platform
+
+
 
 
 

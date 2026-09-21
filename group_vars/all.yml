@@ -30,3 +30,25 @@ tls_namespaces:
   - "ingress-internal"
   - "ingress-external"
   - "monitoring"
+  - "devops-harbor"
+  - "devops-argocd"
+  - "devops-gitlab-runner"
+
+# DevOps Platform Configuration
+harbor_domain: "harbor.dishhome.com.np"
+harbor_namespace: "devops-harbor"
+harbor_chart_version: "1.14.0"
+harbor_storage_class: "rook-ceph-block"
+harbor_admin_password: "DishHomeAdmin123!" # Change after deployment
+
+argocd_domain: "argocd.dishhome.com.np"
+argocd_namespace: "devops-argocd"
+argocd_chart_version: "6.7.1"
+argocd_storage_class: "rook-ceph-block"
+
+gitlab_url: "https://gitlab.dishhome.com.np"
+gitlab_runner_namespace: "devops-gitlab-runner"
+gitlab_runner_chart_version: "0.63.0"
+# Set your GitLab Runner registration/authentication token here
+gitlab_runner_token: "CHANGE_ME_GITLAB_RUNNER_TOKEN"
+

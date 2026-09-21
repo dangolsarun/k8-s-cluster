@@ -1,0 +1,44 @@
+global:
+  domain: "{{ argocd_domain }}"
+
+configs:
+  params:
+    server.insecure: true
+
+server:
+  extraArgs:
+    - --insecure
+
+  ingress:
+    enabled: true
+    ingressClassName: "{{ ingress_internal_class }}"
+    hostname: "{{ argocd_domain }}"
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    tls: true
+    extraTls:
+      - hosts:
+          - "{{ argocd_domain }}"
+        secretName: "{{ tls_secret_name }}"
+
+  metrics:
+    enabled: true
+
+controller:
+  metrics:
+    enabled: true
+
+repoServer:
+  metrics:
+    enabled: true
+
+redis:
+  enabled: true
+  persistence:
+    enabled: true
+    storageClass: "{{ argocd_storage_class }}"
+    size: 5Gi

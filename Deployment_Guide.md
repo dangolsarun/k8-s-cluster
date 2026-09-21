@@ -199,4 +199,80 @@ To ensure a highly available, secure, and production-ready environment, this dep
 
 ### 7.6 Automated TLS Certificate Management
 - **What it does**: The Ansible `tls_certs` role orchestrates the secure distribution of your organization's Wildcard TLS Certificate (`*.dishhome.com.np`). 
-- **Why it's used**: Copying certificates manually into multiple namespaces is error-prone. The automation checks your local machine for `~/certificates/tls.crt`, securely injects it into Kubernetes as a `Secret`, and loops through necessary namespaces (`kube-system`, `ingress-internal`, `ingress-external`, `rook-ceph`). If it detects a missing certificate during a fresh install, it dynamically generates a valid self-signed fallback to prevent deployment crashes.
+- **Why it's used**: Copying certificates manually into multiple namespaces is error-prone. The automation checks your local machine for `~/certificates/tls.crt`, securely injects it into Kubernetes as a `Secret`, and loops through necessary namespaces (`kube-system`, `ingress-internal`, `ingress-external`, `rook-ceph`, `devops-harbor`, `devops-argocd`, `devops-gitlab-runner`). If it detects a missing certificate during a fresh install, it dynamically generates a valid self-signed fallback to prevent deployment crashes.
+
+---
+
+## 8. Phase 10: DevOps Platform Deployment
+
+### 8.1 Component Overview
+- **Harbor Enterprise Container Registry** (`harbor.dishhome.com.np`):
+  - Ingress: Internal (`192.168.28.125`, `nginx-internal` class)
+  - Namespace: `devops-harbor`
+  - Storage: Persistent Block storage (`rook-ceph-block`) for PostgreSQL, Redis, Trivy vulnerability DB, and registry image blobs.
+  - Ingress configuration tuned with `proxy-body-size: "0"` for unlimited image layer payload size.
+- **Argo CD GitOps Controller** (`argocd.dishhome.com.np`):
+  - Ingress: Internal (`192.168.28.125`, `nginx-internal` class)
+  - Namespace: `devops-argocd`
+  - Storage: Persistent storage (`rook-ceph-block`) for Redis cache.
+  - Server configured in `--insecure` mode behind NGINX TLS termination.
+- **GitLab Kubernetes Runner**:
+  - Namespace: `devops-gitlab-runner`
+  - Executor: Kubernetes pod executor with auto-scaling build pods.
+  - Integrated with external GitLab (`https://gitlab.dishhome.com.np`).
+
+### 8.2 Deployment Instructions
+
+1. **Configure GitLab Runner Token**:
+   Edit `group_vars/all.yml` and replace `CHANGE_ME_GITLAB_RUNNER_TOKEN` with your GitLab Runner Registration or Authentication token:
+   ```yaml
+   gitlab_url: "https://gitlab.dishhome.com.np"
+   gitlab_runner_token: "glrt-YOUR_ACTUAL_TOKEN_HERE"
+   ```
+
+2. **Run Ansible Playbook**:
+   ```bash
+   ansible-playbook site.yml -u dictator --tags devops
+   ```
+
+3. **Verify Deployment**:
+   ```bash
+   # Check Pod status in devops namespaces
+   sudo /var/lib/rancher/rke2/bin/kubectl get pods -n devops-harbor
+   sudo /var/lib/rancher/rke2/bin/kubectl get pods -n devops-argocd
+   sudo /var/lib/rancher/rke2/bin/kubectl get pods -n devops-gitlab-runner
+
+   # Get Argo CD initial admin password
+   sudo /var/lib/rancher/rke2/bin/kubectl -n devops-argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+   ```
+
+### 8.3 DNS Setup
+Ensure your internal DNS server or workstation `/etc/hosts` resolves the domains to the **Internal Ingress IP (`192.168.28.125`)**:
+```text
+192.168.28.125 harbor.dishhome.com.np
+192.168.28.125 argocd.dishhome.com.np
+```
+
+### 8.4 Recommended CI/CD Workflow (GitLab CI -> Harbor -> Argo CD)
+
+```yaml
+# Sample .gitlab-ci.yml using Kaniko for rootless Docker builds inside Kubernetes Runner
+stages:
+  - build
+
+build_image:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"https://harbor.dishhome.com.np\":{\"username\":\"admin\",\"password\":\"$HARBOR_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination "harbor.dishhome.com.np/library/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA}"
+  tags:
+    - k8s
+```
+

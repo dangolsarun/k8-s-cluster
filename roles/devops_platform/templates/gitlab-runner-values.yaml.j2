@@ -1,0 +1,28 @@
+gitlabUrl: "{{ gitlab_url }}"
+runnerRegistrationToken: "{{ gitlab_runner_token }}"
+
+concurrent: 10
+checkInterval: 5
+
+rbac:
+  create: true
+
+runners:
+  name: "rke2-production-runner"
+  tags: "k8s,rke2,production,dishhome"
+  privileged: false
+  executor: "kubernetes"
+  builds:
+    cpu_limit: "2"
+    memory_limit: "4Gi"
+    cpu_requests: "500m"
+    memory_requests: "1Gi"
+  services:
+    cpu_limit: "1"
+    memory_limit: "2Gi"
+  helpers:
+    cpu_limit: "500m"
+    memory_limit: "512Mi"
+
+metrics:
+  enabled: true

@@ -1,0 +1,51 @@
+expose:
+  type: ingress
+  tls:
+    enabled: true
+    certSource: secret
+    secret:
+      secretName: "{{ tls_secret_name }}"
+  ingress:
+    hosts:
+      core: "{{ harbor_domain }}"
+    className: "{{ ingress_internal_class }}"
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "900"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "900"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+
+externalURL: "https://{{ harbor_domain }}"
+harborAdminPassword: "{{ harbor_admin_password }}"
+
+persistence:
+  enabled: true
+  resourcePolicy: "keep"
+  persistentVolumeClaim:
+    registry:
+      storageClass: "{{ harbor_storage_class }}"
+      accessMode: ReadWriteOnce
+      size: 100Gi
+    jobservice:
+      jobLog:
+        storageClass: "{{ harbor_storage_class }}"
+        accessMode: ReadWriteOnce
+        size: 5Gi
+    database:
+      storageClass: "{{ harbor_storage_class }}"
+      accessMode: ReadWriteOnce
+      size: 10Gi
+    redis:
+      storageClass: "{{ harbor_storage_class }}"
+      accessMode: ReadWriteOnce
+      size: 5Gi
+    trivy:
+      storageClass: "{{ harbor_storage_class }}"
+      accessMode: ReadWriteOnce
+      size: 10Gi
+
+trivy:
+  enabled: true
+
+metrics:
+  enabled: true
