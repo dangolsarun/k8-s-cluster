@@ -34,18 +34,19 @@ tls_namespaces:
   - "devops-argocd"
 
 # DevOps Platform Configuration (Harbor & Argo CD)
-# External GitLab & Dedicated VM Runner: https://gitlab.dishhome.com.np
+# External GitLab & Dedicated VM Runner: https://git.dishhome.com.np
 harbor_domain: "harbor.dishhome.com.np"
 harbor_namespace: "devops-harbor"
 harbor_chart_version: "1.14.0"
-harbor_storage_class: "rook-ceph-block"
+harbor_storage_class: "ceph-block"
 harbor_admin_password: "DishHomeAdmin123!" # Change after deployment
 
 argocd_domain: "argocd.dishhome.com.np"
 argocd_namespace: "devops-argocd"
 argocd_chart_version: "6.7.1"
-argocd_storage_class: "rook-ceph-block"
+argocd_storage_class: "ceph-block"
 
-gitlab_url: "https://gitlab.dishhome.com.np"
+gitlab_url: "https://git.dishhome.com.np"
 
+ingress_internal_class: "nginx-internal"
 

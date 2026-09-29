@@ -1,31 +1,63 @@
-# Production RKE2 Cluster Deployment Guide
+# Production RKE2 Cluster Deployment & Operations Guide
 
-This document provides a complete, step-by-step guide to deploying a production-grade RKE2 cluster with Cilium CNI, HA Control Plane, CIS Hardening, and Rook-Ceph storage using the Ansible automation in this repository.
+This document provides a complete, end-to-end operational and deployment guide for building, managing, and expanding a production-grade **RKE2 (Rancher Kubernetes Engine 2)** cluster with **Cilium CNI**, **H/A Control Plane (Kube-VIP)**, **MetalLB Load Balancer**, **Dual NGINX Ingress Controllers**, **Rook-Ceph Storage**, **Centralized Wildcard TLS Certificates**, **Prometheus/Grafana/Loki Observability Stack**, and a **DevOps Platform (Harbor Container Registry & Argo CD GitOps)**.
 
-## 1. Environment Preparation
+---
 
-### 1.1 Infrastructure
-You need virtual machines (Ubuntu/Rocky/RHEL):
-- **3 Masters (Servers)**: `192.168.28.120` - `192.168.28.122`
-- **3 Workers (Agents)**: `192.168.28.130` - `192.168.28.132`
-- **3 Ceph Storage Nodes**: `192.168.28.130` - `192.168.28.132` (Co-located or dedicated)
+## 1. Executive Summary & Architecture Overview
 
-### 1.2 Networking
-- **Cluster VIP**: `192.168.28.129` (Defined in `group_vars/all.yml`). Reserved IP in the same subnet as your masters.
-- **Firewall**: The `common` role will disable `ufw`/`firewalld` to let CNI handle traffic.
+The automation in this repository provisions an enterprise-grade Kubernetes platform designed for high availability, network isolation, persistent distributed storage, and GitOps CI/CD workflows.
 
-### 1.3 Ansible Controller Setup
-On your deployment machine:
-1. **Install Ansible**: `sudo apt install ansible` (or via pip).
-2. **Generate SSH Key**:
-   ```bash
-   ssh-keygen -t ed25519 -C "Sarun to k8's Cluster"
-   ```
+```
+                         [ Internal Clients / Developers ]       [ External Internet Traffic ]
+                                         │                                      │
+                                         ▼                                      ▼
+                        ┌─────────────────────────────────┐   ┌──────────────────────────────────┐
+                        │  MetalLB VIP: 192.168.28.125    │   │   MetalLB VIP: 192.168.28.127    │
+                        │ Internal Ingress (nginx-internal) │   │ External Ingress (nginx-external)│
+                        └────────────────┬────────────────┘   └────────────────┬─────────────────┘
+                                         │                                     │
+           ┌─────────────────────────────┼─────────────────────────────┐       │
+           │                             │                             │       │
+           ▼                             ▼                             ▼       ▼
+┌──────────────────────┐      ┌──────────────────────┐      ┌──────────────────────┐
+│  Grafana / Prometheus│      │  Harbor Registry     │      │   Argo CD GitOps     │
+│ grafana.dishhome...  │      │ harbor.dishhome...   │      │ argocd.dishhome...   │
+└──────────────────────┘      └──────────────────────┘      └──────────────────────┘
+           │                             │                             │
+           └─────────────────────────────┼─────────────────────────────┘
+                                         ▼
+                 ┌─────────────────────────────────────────────────┐
+                 │ Rook-Ceph Block Storage Class (`ceph-block`)     │
+                 └─────────────────────────────────────────────────┘
+```
 
-## 2. Configuration
+### Core Components Summary
 
-### 2.1 Inventory (`inventory.ini`)
-Verify your nodes are listed correctly under their respective groups. Worker nodes (`rke2_agents`) and Ceph storage nodes (`ceph_agents`) can be distinct dedicated hosts or co-located:
+| Component | Technology | Description / Justification |
+| :--- | :--- | :--- |
+| **Control Plane HA** | Kube-VIP (`192.168.28.129`) | Virtual Floating IP across master nodes for seamless API server failover. |
+| **Networking & CNI** | Cilium (v1.15.5) | eBPF-based high performance CNI replacing Canal. |
+| **Load Balancer** | MetalLB (`192.168.28.125-128`) | Bare-metal Layer-2 ARP LoadBalancer service allocator. |
+| **Dual Ingress** | NGINX (`nginx-internal` / `nginx-external`) | Strict physical traffic separation between internal admin tools and public web apps. |
+| **Persistent Storage** | Rook-Ceph (`ceph-block`) | Distributed block & file storage leveraging raw disks on dedicated storage nodes. |
+| **TLS Automation** | Wildcard SSL (`*.dishhome.com.np`) | Auto-generates or syncs wildcard TLS secret into all application namespaces. |
+| **Observability** | kube-prometheus-stack + Loki | Full metric monitoring (Prometheus + Grafana) and log aggregation (Loki + Promtail). |
+| **DevOps Platform** | Harbor (v1.14.0) + Argo CD (v6.7.1) | Enterprise image registry with security scanning + GitOps continuous deployment. |
+| **External CI/CD** | GitLab (`git.dishhome.com.np`) | Dedicated external VM running GitLab & GitLab Runners. |
+
+---
+
+## 2. Infrastructure & Inventory Configuration
+
+### 2.1 Hardware Requirements
+
+- **3 Master Nodes (Control Plane)**: `192.168.28.120` – `192.168.28.122` (Min 4 vCPU, 8GB RAM, 50GB Disk)
+- **3 Worker Nodes (Data Plane)**: `192.168.28.130` – `192.168.28.132` (Min 4 vCPU, 16GB RAM)
+- **3 Storage Nodes (Ceph)**: Co-located on workers or dedicated nodes with raw, unformatted disk drives (`/dev/sdb`, `/dev/nvme1n1`, etc.).
+
+### 2.2 Ansible Inventory (`inventory.ini`)
+
 ```ini
 [rke2_servers]
 master1 ansible_host=192.168.28.120
@@ -48,227 +80,248 @@ rke2_agents
 ceph_agents
 ```
 
-### 2.2 Global Config (`group_vars/all.yml`)
-- **VIP**: Ensure `cluster_vip` matches your plan.
-- **Token**: The token is auto-generated and saved to `credentials/node-token` on first run.
+### 2.3 Global Variables (`group_vars/all.yml`)
 
-## 3. Bootstrap (User Setup)
+The `group_vars/all.yml` file acts as the single source of truth for global cluster parameters:
 
-Run the **Bootstrap Playbook** to configure the `dictator` user with passwordless sudo and your SSH key.
+```yaml
+---
+# RKE2 Version
+rke2_version: "v1.28.10+rke2r1"
 
-**Prerequisite**: You must have initial access (e.g., as `ubuntu` or `root`) with a password.
+# Cluster VIP for HA Control Plane
+cluster_vip: "192.168.28.129"
+cluster_domain: "k8s.dishhome.com.np"
+
+# Networking
+rke2_cni: "cilium"
+cilium_version: "1.15.5"
+
+# RKE2 Config
+rke2_config_dir: "/etc/rancher/rke2"
+rke2_token: "{{ lookup('password', 'credentials/node-token length=32 chars=ascii_letters,digits') }}"
+
+# OS Settings
+disable_firewalld: true
+enable_iscsi: true
+
+# TLS & Certificate Management
+tls_secret_name: "dishhome-wildcard-tls"
+tls_namespaces:
+  - "rook-ceph"
+  - "default"
+  - "kube-system"
+  - "ingress-internal"
+  - "ingress-external"
+  - "monitoring"
+  - "devops-harbor"
+  - "devops-argocd"
+
+# DevOps Platform Configuration
+harbor_domain: "harbor.dishhome.com.np"
+harbor_namespace: "devops-harbor"
+harbor_chart_version: "1.14.0"
+harbor_storage_class: "ceph-block"
+harbor_admin_password: "DishHomeAdmin123!"
+
+argocd_domain: "argocd.dishhome.com.np"
+argocd_namespace: "devops-argocd"
+argocd_chart_version: "6.7.1"
+argocd_storage_class: "ceph-block"
+
+gitlab_url: "https://git.dishhome.com.np"
+
+# Global Ingress Classes
+ingress_internal_class: "nginx-internal"
+```
+
+---
+
+## 3. Initial Bootstrap & Deployment
+
+### 3.1 Step 1: Bootstrap Administrative User
+
+Run `bootstrap.yml` to create a dedicated user `dictator` with passwordless `sudo` rights and deploy your SSH key:
 
 ```bash
-# Run verifying with a known user (e.g., ubuntu)
 ansible-playbook bootstrap.yml -u ubuntu -k -K
 ```
 
-- `-u ubuntu`: Connect as `ubuntu` initially.
-- `-k`: Ask for SSH password.
-- `-K`: Ask for Sudo password.
+### 3.2 Step 2: Full End-to-End Cluster Deployment
 
-**Result**: A user `dictator` is created on all nodes with your ED25519 key and `NOPASSWD` sudo rights.
+Execute the entire deployment workflow in sequence using the `dictator` user:
 
-## 4. Cluster Deployment
-
-Now deployment runs fully automated using the `dictator` user.
-
-### 4.1 Granular Deployment (Recommended for Learning)
-You can run steps individually using tags:
-1. **Common**: `ansible-playbook site.yml -u dictator --tags common`
-2. **Masters**: `ansible-playbook site.yml -u dictator --tags init,vip,join_server`
-3. **Workers**: `ansible-playbook site.yml -u dictator --tags join_agent`
-4. **Ceph Storage Nodes**: `ansible-playbook site.yml -u dictator --tags join_ceph`
-
-### 4.2 Full Deployment (All at once)
 ```bash
 ansible-playbook site.yml -u dictator
 ```
 
-**What happens?**
-1. **Common**: Disables swap, loads kernel modules, installs packages across all hosts.
-2. **Server**:
-   - Installs RKE2 on Master 1.
-   - Starts `kube-vip` (HA).
-   - Installs RKE2 on Master 2 & 3 and joins them.
-   - Configures `cis-1.23` profile.
-3. **Agents**:
-   - Installs RKE2 on Worker nodes (`rke2_agents`) and labels them with `node-role.kubernetes.io/worker=true`.
-   - Installs RKE2 on Ceph storage nodes (`ceph_agents`) and labels them with `node-role.kubernetes.io/ceph=true`.
-4. **Networking**: 
-   - Deploys `metallb` referencing the address pool configured in `group_vars/all.yml` (e.g., `192.168.28.125-192.168.28.128`).
-   - Deploys **Dual Ingress Controllers**:
-     - **Internal Ingress** (`nginx-internal`): Binds to `192.168.28.125` inside `ingress-internal` namespace.
-     - **External Ingress** (`nginx-external`): Binds to `192.168.28.127` inside `ingress-external` namespace.
-5. **TLS Certificates**:
-   - Checks your Ansible controller for `~/certificates/tls.crt` and `~/certificates/tls.key`.
-   - If these files **exist locally**, it copies them securely to the cluster.
-   - If these files **do not exist**, it automatically generates a valid Self-Signed Wildcard Certificate for `*.dishhome.com.np` directly on the server to prevent deployment failures.
-   - Deploys the `dishhome-wildcard-tls` Secret into multiple predefined namespaces (e.g., `kube-system`, `ingress-internal`, `ingress-external`, `monitoring`, `rook-ceph`).
-6. **Storage**:
-   - Installs the **Rook-Ceph** Operator.
-   - Provisions storage using all available raw devices on `ceph_agents` nodes (`node-role.kubernetes.io/ceph=true`).
-   - Automatically clones the wildcard certificate into the `rook-ceph` namespace.
-   - Exposes the Ceph Dashboard at `ceph.dishhome.com.np` utilizing the Internal Ingress controller via HTTPS.
+### 3.3 Granular Deployment Phases (By Tags)
 
-## 5. Verification
+If deploying step-by-step or troubleshooting specific components, execute using Ansible tags:
 
-Log into `master1` (`ssh dictator@192.168.28.120`):
+| Phase | Description | Command |
+| :--- | :--- | :--- |
+| **Phase 1** | System preparation, packages, iSCSI, firewall | `ansible-playbook site.yml -u dictator --tags common` |
+| **Phase 2** | Initialize first Master | `ansible-playbook site.yml -u dictator --tags init` |
+| **Phase 3** | Deploy Kube-VIP (HA Control Plane) | `ansible-playbook site.yml -u dictator --tags vip` |
+| **Phase 4** | Join remaining Master nodes | `ansible-playbook site.yml -u dictator --tags join_server` |
+| **Phase 5** | Join Worker and Ceph storage nodes | `ansible-playbook site.yml -u dictator --tags join_agent,join_ceph` |
+| **Phase 6** | MetalLB & Dual Ingress Controllers | `ansible-playbook site.yml -u dictator --tags networking,dual_ingress` |
+| **Phase 7** | Centralized Wildcard TLS Secrets | `ansible-playbook site.yml -u dictator --tags tls_certs` |
+| **Phase 8** | Rook-Ceph Storage Cluster | `ansible-playbook site.yml -u dictator --tags storage` |
+| **Phase 9** | Observability (Prometheus, Grafana, Loki) | `ansible-playbook site.yml -u dictator --tags monitoring` |
+| **Phase 10**| DevOps Platform (Harbor & Argo CD) | `ansible-playbook site.yml -u dictator --tags devops` |
+
+---
+
+## 4. Component Deep-Dive & Key Technical Decisions
+
+### 4.1 Dual NGINX Ingress Controllers
+To ensure strict security boundaries, two NGINX ingress controllers are deployed:
+- **Internal Ingress (`nginx-internal`)**:
+  - Bound to MetalLB IP `192.168.28.125`.
+  - Exposes internal operational dashboards (Ceph Dashboard, Grafana, Prometheus, Harbor Registry, Argo CD UI).
+  - Keeps sensitive tools invisible from the public internet.
+- **External Ingress (`nginx-external`)**:
+  - Bound to MetalLB IP `192.168.28.127`.
+  - Dedicated exclusively for public user-facing applications.
+
+### 4.2 Rook-Ceph Distributed Storage Class (`ceph-block`)
+- Provisions resilient block storage across nodes labeled with `node-role.kubernetes.io/ceph=true`.
+- Dynamically creates the `ceph-block` StorageClass and sets it as default (`is-default-class: "true"`).
+- Automatically handles disk detection, Ceph OSD lifecycle, and Ceph Dashboard exposure on `https://ceph.dishhome.com.np`.
+
+### 4.3 Centralized TLS Certificate Sync
+- Looks for custom Wildcard SSL certificates at `~/certificates/tls.crt` and `~/certificates/tls.key` on the Ansible controller.
+- If certificates are missing, automatically creates a self-signed fallback certificate for `*.dishhome.com.np`.
+- Automatically syncs the `dishhome-wildcard-tls` secret into all operational namespaces (`kube-system`, `ingress-internal`, `ingress-external`, `monitoring`, `rook-ceph`, `devops-harbor`, `devops-argocd`).
+
+### 4.4 DevOps Platform (Harbor & Argo CD)
+- **Harbor Container Registry (`harbor.dishhome.com.np`)**:
+  - Utilizes `ceph-block` storage for PostgreSQL, Redis, Trivy vulnerability DB, and image blob persistence.
+  - Ingress configured with `proxy-body-size: "0"` for unlimited image upload layer size.
+- **Argo CD GitOps Engine (`argocd.dishhome.com.np`)**:
+  - Configured with `redis.persistence.enabled: false` (in-memory caching). Because Argo CD's source of truth is stored in Kubernetes CRDs (`etcd`), non-persistent Redis eliminates unnecessary PVC overhead, speeds up Pod recovery, and avoids disk attach delays.
+- **External GitLab (`git.dishhome.com.np`)**:
+  - Hosted on a dedicated external VM to isolate CPU/memory heavy CI/CD docker builds from the Kubernetes production cluster nodes.
+
+---
+
+## 5. Observability & Monitoring Stack
+
+The monitoring stack is deployed via `kube-prometheus-stack` and `loki-stack`:
+
+### Exposed Endpoints (Internal Ingress: `192.168.28.125`)
+- **Grafana**: `https://grafana.dishhome.com.np`
+- **Prometheus**: `https://prometheus.dishhome.com.np`
+- **AlertManager**: `https://alertmanager.dishhome.com.np`
+
+### Credentials & Access
 
 ```bash
-# Check Nodes and Labels
-sudo /var/lib/rancher/rke2/bin/kubectl get nodes -o wide --show-labels
-
-# Check Ceph Storage Nodes specifically
-sudo /var/lib/rancher/rke2/bin/kubectl get nodes -l node-role.kubernetes.io/ceph=true
-
-# Check Pods (Cilium, CoreDNS, Rook-Ceph)
-sudo /var/lib/rancher/rke2/bin/kubectl get pods -A
-
-# Check Local Kubeconfig
-ls -l ~/.kube/config
-
-# Verify Ingress IPs allocated via MetalLB
-sudo /var/lib/rancher/rke2/bin/kubectl get svc -A | grep LoadBalancer
-
-# Verify TLS Secrets
-sudo /var/lib/rancher/rke2/bin/kubectl get secrets -A | grep tls
+# Retrieve Grafana Admin Password
+kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 --decode; echo
 ```
 
-## 6. Maintenance
+---
 
-### 6.1 Certificate Management
-If you need to update your Wildcard Certificate:
-1. Place the new `tls.crt` and `tls.key` in your Ansible host user's `~/certificates/` directory.
-2. Run the TLS certs tag again:
+## 6. Cluster Lifecycle & Operational Playbooks
+
+This repository includes dedicated playbooks in the `updatecluster/` directory for scaling, node maintenance, and cluster teardown.
+
+### 6.1 Scaling Out: Adding Nodes
+
+#### Add a New Master Node (`add_master.yml`)
+1. Add the new host to `[rke2_servers]` in `inventory.ini`.
+2. Run:
    ```bash
-   ansible-playbook site.yml -u dictator --tags tls_certs
+   ansible-playbook updatecluster/add_master.yml --limit master4
    ```
-This will forcefully recreate the secrets in all necessary namespaces across the cluster.
 
-### 6.2 Adding a New Worker Node
-To add a new worker (e.g., `worker4`):
-1. **Update Inventory**: Add `worker4` under `[rke2_agents]` in `inventory.ini`.
-2. **Add Worker Node**:
+#### Add a New Worker Node (`add_worker.yml`)
+1. Add the host to `[rke2_agents]` in `inventory.ini`.
+2. Run:
    ```bash
    ansible-playbook updatecluster/add_worker.yml --limit worker4
    ```
 
-### 6.3 Adding / Removing a Ceph Storage Node
-To add a dedicated or new Ceph node (e.g., `ceph4`):
-1. **Update Inventory**: Add `ceph4` under `[ceph_agents]` in `inventory.ini`.
-2. **Add Ceph Node**:
+#### Add a New Ceph Storage Node (`add_ceph.yml`)
+1. Add the host to `[ceph_agents]` in `inventory.ini`.
+2. Run:
    ```bash
    ansible-playbook updatecluster/add_ceph.yml --limit ceph4
    ```
-To safely drain, delete, and wipe a Ceph node:
+
+---
+
+### 6.2 Scaling In: Removing Nodes Gracefully
+
+#### Remove a Master Node (`remove_master.yml`)
+Drains the node, cordons it, stops the RKE2 service, removes it from the etcd cluster, and cleans up binaries:
 ```bash
-ansible-playbook updatecluster/remove_ceph.yml --limit ceph4
+ansible-playbook updatecluster/remove_master.yml --limit master3
 ```
 
-### 6.4 Upgrading
-Change `rke2_version` in `group_vars/all.yml` and re-run `site.yml`.
+#### Remove a Worker Node (`remove_worker.yml`)
+Evacuates running workloads safely before uninstalling RKE2 binaries:
+```bash
+ansible-playbook updatecluster/remove_worker.yml --limit worker3
+```
+
+#### Remove a Ceph Storage Node (`remove_ceph.yml`)
+Safely drains OSDs, waits for Ceph HEALTH_OK status, wipes LVM/Ceph disk metadata, and uninstalls RKE2:
+```bash
+ansible-playbook updatecluster/remove_ceph.yml --limit ceph3
+```
 
 ---
 
-## 7. Component Architecture & Justification
+### 6.3 Complete Cluster Teardown (`reset.yml`)
 
-To ensure a highly available, secure, and production-ready environment, this deployment utilizes several industry-standard CNCF components. Here is a detailed breakdown of why each component is used and what it does.
+To completely wipe and reset all nodes in the cluster back to clean OS state:
 
-### 7.1 Kube-VIP (Control Plane High Availability)
-- **What it does**: Provides a Virtual IP (`192.168.28.129`) that floats between the Master nodes.
-- **Why it's used**: By default, worker nodes and external clients connect directly to a single Master node's IP. If that Master dies, the cluster API becomes unreachable. Kube-VIP ensures that if `master1` fails, the VIP instantly fails over to `master2` or `master3`, guaranteeing zero-downtime access to the Kubernetes API server.
+```bash
+ansible-playbook reset.yml -u dictator
+```
 
-### 7.2 Cilium (Container Network Interface - CNI)
-- **What it does**: Manages all pod-to-pod and node-to-node networking using eBPF (Extended Berkeley Packet Filter) technology natively within the Linux kernel.
-- **Why it's used**: It replaces the default RKE2 Canal CNI because Cilium is significantly faster, highly scalable, and provides advanced features like strict NetworkPolicies, transparent encryption, and deep network observability (Hubble) without the overhead of traditional iptables routing.
-
-### 7.3 MetalLB (Network Load Balancer)
-- **What it does**: Acts as a bare-metal LoadBalancer implementation. It allocates IPs from a reserved pool (e.g., `192.168.28.125-128`) to Kubernetes `Service` objects of type `LoadBalancer`.
-- **Why it's used**: In cloud environments (AWS/GCP), the cloud provider natively provisions LoadBalancers. In bare-metal or on-premise VM environments, Kubernetes cannot automatically provision an external IP. MetalLB bridges this gap by broadcasting these IPs via Layer 2 ARP to your local network router, making your Ingress controllers reachable.
-
-### 7.4 Dual NGINX Ingress (Internal & External Traffic Isolation)
-- **What it does**: We deploy *two* separate NGINX Ingress Controllers instead of the default one. 
-  - **Internal Ingress**: Bound to `192.168.28.125`. Routes traffic for internal admin dashboards (like Ceph) and private company apps.
-  - **External Ingress**: Bound to `192.168.28.127`. Dedicated strictly for public-facing internet traffic.
-- **Why it's used**: Security and isolation. It prevents internal dashboards from accidentally being exposed to the internet. We can easily apply aggressive Web Application Firewalls (WAF) or rate-limiting on the External ingress while keeping the Internal ingress unrestricted for developers.
-
-### 7.5 Rook-Ceph (Distributed Persistent Storage)
-- **What it does**: Turns raw, unformatted disk drives attached to designated Ceph nodes (`ceph_agents`) into a highly available, distributed storage cluster. It provides `ReadWriteOnce` Block storage (RBD) and `ReadWriteMany` File storage (CephFS) natively to your Pods.
-- **Why it's used**: Pods are ephemeral; if they die, local data is lost. Rook-Ceph replicates data across multiple nodes (`ceph1`, `ceph2`, `ceph3`). If one node's hard drive fails, the data is safely preserved on the remaining Ceph nodes. The Operator manages the entire lifecycle, self-healing, and dashboarding automatically.
-
-### 7.6 Automated TLS Certificate Management
-- **What it does**: The Ansible `tls_certs` role orchestrates the secure distribution of your organization's Wildcard TLS Certificate (`*.dishhome.com.np`). 
-- **Why it's used**: Copying certificates manually into multiple namespaces is error-prone. The automation checks your local machine for `~/certificates/tls.crt`, securely injects it into Kubernetes as a `Secret`, and loops through necessary namespaces (`kube-system`, `ingress-internal`, `ingress-external`, `rook-ceph`, `devops-harbor`, `devops-argocd`). If it detects a missing certificate during a fresh install, it dynamically generates a valid self-signed fallback to prevent deployment crashes.
+> [!CAUTION]
+> Running `reset.yml` will permanently destroy all RKE2 data, Rook-Ceph storage pools, network interfaces, container volumes, and etcd cluster state.
 
 ---
 
-## 8. Phase 10: DevOps Platform Deployment (Harbor & Argo CD)
+## 7. Verification & Post-Deployment Health Check
 
-### 8.1 Architecture & Production Best Practices
-For production security and resource isolation, **GitLab and GitLab Runner are hosted on a dedicated external VM (`gitlab.dishhome.com.np`)**, completely separated from the Kubernetes cluster:
-- **Dedicated VM Isolation**: Heavy container image builds do not consume CPU/RAM resources on your RKE2 cluster nodes.
-- **Harbor Registry** (`harbor.dishhome.com.np`): Deployed inside the RKE2 cluster on **Internal Ingress (`192.168.28.125`)**, utilizing Rook-Ceph (`rook-ceph-block`) for persistent database, cache, vulnerability DB (Trivy), and image blob storage.
-- **Argo CD GitOps Engine** (`argocd.dishhome.com.np`): Deployed inside the RKE2 cluster on **Internal Ingress (`192.168.28.125`)**, pulling Kubernetes application manifests directly from GitLab and auto-synchronizing changes.
+Log into `master1` (`ssh dictator@192.168.28.120`):
 
-### 8.2 Component Breakdown
-- **Harbor Enterprise Container Registry** (`harbor.dishhome.com.np`):
-  - Ingress: Internal (`192.168.28.125`, `nginx-internal` class)
-  - Namespace: `devops-harbor`
-  - Storage: Persistent Block storage (`rook-ceph-block`) for PostgreSQL, Redis, Trivy scanner, and registry image blobs.
-  - Ingress configuration tuned with `proxy-body-size: "0"` for unlimited image layer upload size.
-- **Argo CD GitOps Controller** (`argocd.dishhome.com.np`):
-  - Ingress: Internal (`192.168.28.125`, `nginx-internal` class)
-  - Namespace: `devops-argocd`
-  - Storage: Persistent storage (`rook-ceph-block`) for Redis cache.
-  - Server configured in `--insecure` mode behind NGINX TLS termination.
+```bash
+# 1. Check All Nodes and Roles
+sudo /var/lib/rancher/rke2/bin/kubectl get nodes -o wide --show-labels
 
-### 8.3 Deployment Instructions
+# 2. Check All Pods across Namespaces
+sudo /var/lib/rancher/rke2/bin/kubectl get pods -A
 
-1. **Run Ansible Playbook**:
-   ```bash
-   ansible-playbook site.yml -u dictator --tags devops
-   ```
+# 3. Check LoadBalancer Ingress IPs (MetalLB)
+sudo /var/lib/rancher/rke2/bin/kubectl get svc -A | grep LoadBalancer
 
-2. **Verify Deployment**:
-   ```bash
-   # Check Pod status in devops namespaces
-   sudo /var/lib/rancher/rke2/bin/kubectl get pods -n devops-harbor
-   sudo /var/lib/rancher/rke2/bin/kubectl get pods -n devops-argocd
+# 4. Verify Rook-Ceph Storage Class Status
+sudo /var/lib/rancher/rke2/bin/kubectl get sc
+sudo /var/lib/rancher/rke2/bin/kubectl get storagecluster -n rook-ceph
 
-   # Get Argo CD initial admin password
-   sudo /var/lib/rancher/rke2/bin/kubectl -n devops-argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
-   ```
+# 5. Verify Argo CD Admin Initial Secret
+sudo /var/lib/rancher/rke2/bin/kubectl -n devops-argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+```
 
-### 8.4 DNS Setup
-Ensure your internal network DNS server or workstation `/etc/hosts` resolves the domains to the **Internal Ingress IP (`192.168.28.125`)**:
+---
+
+## 8. Network DNS Requirements
+
+Add the following DNS records to your enterprise DNS server (or local `/etc/hosts` for testing) pointing to the **Internal Ingress IP (`192.168.28.125`)**:
+
 ```text
+192.168.28.125 ceph.dishhome.com.np
+192.168.28.125 grafana.dishhome.com.np
+192.168.28.125 prometheus.dishhome.com.np
+192.168.28.125 alertmanager.dishhome.com.np
 192.168.28.125 harbor.dishhome.com.np
 192.168.28.125 argocd.dishhome.com.np
 ```
-
-### 8.5 Production CI/CD Integration Workflow
-
-1. **External Dedicated VM Runner** (`gitlab.dishhome.com.np`):
-   - Executes build pipelines using Docker / Shell / Docker-in-Docker executor.
-   - Pushes built container images directly to `harbor.dishhome.com.np` (Internal Ingress `192.168.28.125`).
-2. **GitLab Repository Update**:
-   - The CI job updates image tags in your application manifest Git repository on `gitlab.dishhome.com.np`.
-3. **Argo CD Auto-Sync**:
-   - Argo CD running in RKE2 detects updated Git manifests from GitLab and deploys the new pods to the Kubernetes cluster automatically.
-
-```yaml
-# Sample .gitlab-ci.yml on your external GitLab Runner
-stages:
-  - build
-  - deploy
-
-build_and_push:
-  stage: build
-  script:
-    - docker login https://harbor.dishhome.com.np -u "$HARBOR_USER" -p "$HARBOR_PASSWORD"
-    - docker build -t harbor.dishhome.com.np/library/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA} .
-    - docker push harbor.dishhome.com.np/library/${CI_PROJECT_NAME}:${CI_COMMIT_SHORT_SHA}
-```
-
-
